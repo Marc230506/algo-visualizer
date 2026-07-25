@@ -82,7 +82,7 @@ const getPointerColor = (name) => {
 // --- FILE: quiz_engine.js ---
 // quiz_engine.js
 
-const QuizPanel = ({ quiz, onCorrect }) => {
+const QuizPanel = ({ quiz, onCorrect, onSkip }) => {
   const [answer, setAnswer] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -90,7 +90,6 @@ const QuizPanel = ({ quiz, onCorrect }) => {
 
   const handleSubmit = () => {
     if (quiz.type === "INPUT_ARRAY") {
-      // Nutzer gibt "1, 2, 3" ein
       const parsed = answer.split(",").map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
       if (arraysEqual(parsed, quiz.correctAnswer)) {
         setErrorMsg("");
@@ -111,10 +110,10 @@ const QuizPanel = ({ quiz, onCorrect }) => {
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-xl border-l-4 border-yellow-500 w-80 flex-shrink-0 relative">
-      <div className="absolute -top-3 -left-3 bg-yellow-500 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold">?</div>
-      <h3 className="text-lg font-bold text-gray-800 mb-2">Klausur-Frage!</h3>
-      <p className="text-gray-600 mb-4 text-sm">{quiz.question}</p>
+    <div className="bg-white/70 backdrop-blur-md p-6 rounded-2xl shadow-2xl border-l-4 border-yellow-500 border-t border-r border-b border-white/50 w-80 flex-shrink-0 relative">
+      <div className="absolute -top-3 -left-3 bg-gradient-to-br from-yellow-400 to-yellow-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold shadow-lg">?</div>
+      <h3 className="text-xl font-extrabold text-slate-800 mb-2">Klausur-Frage!</h3>
+      <p className="text-slate-700 mb-4 text-sm font-medium">{quiz.question}</p>
       
       {quiz.type === "INPUT_ARRAY" && (
         <input 
@@ -122,40 +121,52 @@ const QuizPanel = ({ quiz, onCorrect }) => {
           placeholder="z.B. 5, 2, 9, 1" 
           value={answer}
           onChange={(e) => setAnswer(e.target.value)}
-          className="w-full border border-gray-300 p-2 rounded mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full border border-gray-300 p-2 rounded-xl mb-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white/80"
         />
       )}
 
       {quiz.type === "MULTIPLE_CHOICE" && (
-        <div className="flex flex-col space-y-2 mb-4">
+        <div className="flex flex-col space-y-3 mb-4">
           {quiz.options.map((opt, idx) => (
-            <label key={idx} className="flex items-center space-x-2 text-sm cursor-pointer">
+            <label key={idx} className="flex items-center space-x-3 text-sm cursor-pointer p-2 rounded-lg hover:bg-white/50 transition-colors">
               <input 
                 type="radio" 
                 name="quiz_option" 
                 value={opt} 
                 checked={answer === opt}
                 onChange={() => setAnswer(opt)}
-                className="form-radio text-blue-600"
+                className="form-radio h-4 w-4 text-indigo-600 focus:ring-indigo-500"
               />
-              <span>{opt}</span>
+              <span className="font-medium text-slate-700">{opt}</span>
             </label>
           ))}
         </div>
       )}
 
       {errorMsg && (
-        <div className="text-red-600 text-sm mb-3 bg-red-50 p-2 rounded border border-red-200">
+        <div className="text-red-700 text-sm mb-3 bg-red-100/80 p-3 rounded-lg border border-red-200 shadow-inner">
           {errorMsg}
         </div>
       )}
 
-      <button 
-        onClick={handleSubmit}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
-      >
-        Antwort prüfen
-      </button>
+      <div className="flex flex-col gap-2 mt-4">
+        <button 
+          onClick={handleSubmit}
+          className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-2 px-4 rounded-xl shadow-lg transition-all transform hover:scale-105"
+        >
+          Antwort prüfen
+        </button>
+        <button 
+          onClick={() => {
+            setErrorMsg("");
+            setAnswer("");
+            if(onSkip) onSkip();
+          }}
+          className="w-full text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 font-semibold py-2 px-4 rounded-xl transition-colors text-sm"
+        >
+          Überspringen
+        </button>
+      </div>
     </div>
   );
 };
@@ -1080,7 +1091,7 @@ const TreeVisualizer = ({ treeState, isRBT = false }) => {
   });
 
   return (
-    <div className="w-full overflow-auto bg-white rounded-lg shadow-inner border border-gray-200 relative min-h-[500px]">
+    <div className="w-full overflow-auto bg-transparent rounded-lg relative min-h-[500px]">
       <svg width={svgWidth} height={svgHeight} className="min-w-full">
         {edges.map((edge, i) => {
           const fromPos = nodePositions[edge.from];
@@ -1161,7 +1172,7 @@ const TreeVisualizer = ({ treeState, isRBT = false }) => {
       </svg>
 
       {isRBT && (
-        <div className="absolute bottom-4 left-4 bg-white/95 p-3 rounded shadow text-xs border border-gray-300 z-10 pointer-events-none">
+        <div className="absolute bottom-4 left-4 bg-white/80 backdrop-blur-md p-4 rounded-xl shadow-xl text-xs border border-white/50 z-10 pointer-events-none">
           <h4 className="font-bold mb-2">RB-Eigenschaften:</h4>
           <ul>
             <li className="text-green-600">✓ E1: Jeder Knoten ist rot/schwarz</li>
@@ -1185,43 +1196,141 @@ const TreeVisualizer = ({ treeState, isRBT = false }) => {
 // sorting_ui.js
 
 const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, auxPointers = {}, auxColors = {}, auxLabel = "Hilfs-Array" }) => {
-  
-  const renderArray = (arr, pts, cls, label) => (
-    <div className="flex flex-col items-center justify-center w-full my-4">
-      {label && <h4 className="text-sm font-bold text-gray-500 mb-2">{label}</h4>}
-      <div className="flex flex-wrap justify-center gap-2 relative">
-        {arr.map((val, idx) => {
-          const bgColor = cls[idx] || 'bg-white';
-          const activePointers = Object.keys(pts).filter(k => pts[k] === idx);
+  const prevPositions = useRef({});
+  const [animations, setAnimations] = useState({});
 
-          return (
-            <div key={idx} className="flex flex-col items-center">
-              {/* Array Box */}
-              <div className={`array-box w-12 h-12 md:w-16 md:h-16 flex items-center justify-center border-2 border-gray-700 font-bold text-lg rounded shadow-sm ${bgColor}`}>
-                {val === null || val === undefined ? "" : val}
+  useEffect(() => {
+    let hasChanges = false;
+    const newAnims = {};
+    const currentPositions = {};
+    
+    // Check main array
+    if (array) {
+      array.forEach((val, idx) => {
+        const id = (typeof val === 'object' && val !== null && val.id) ? val.id : `fallback-${idx}-${val}`;
+        currentPositions[id] = idx;
+        
+        if (prevPositions.current[id] !== undefined) {
+          const prevIdx = prevPositions.current[id];
+          if (prevIdx < idx) {
+            newAnims[id] = 'anim-arc-down';
+            hasChanges = true;
+          } else if (prevIdx > idx) {
+            newAnims[id] = 'anim-arc-up';
+            hasChanges = true;
+          }
+        }
+      });
+    }
+
+    prevPositions.current = { ...currentPositions };
+
+    if (hasChanges) {
+      setAnimations(newAnims);
+      const timer = setTimeout(() => {
+        setAnimations({});
+      }, 1000); // match our transition duration
+      return () => clearTimeout(timer);
+    }
+  }, [array]);
+
+  const renderArray = (arr, pts, cls, label) => {
+    // Determine responsive sizing via a fixed constant for JS calculations
+    // We assume a standard width of 64px (w-16) and 8px gap
+    const BLOCK_WIDTH = 72; 
+    const totalWidth = arr.length * BLOCK_WIDTH;
+    const seenKeys = new Set();
+    
+    return (
+      <div className="flex flex-col items-center justify-center w-full my-4 overflow-hidden py-10">
+        <style>{`
+          @keyframes arcUp {
+            0% { transform: translateY(0); z-index: 10; }
+            50% { transform: translateY(-65px); z-index: 10; }
+            100% { transform: translateY(0); z-index: 10; }
+          }
+          @keyframes arcDown {
+            0% { transform: translateY(0); z-index: 10; }
+            50% { transform: translateY(65px); z-index: 10; }
+            100% { transform: translateY(0); z-index: 10; }
+          }
+          .anim-arc-up { animation: arcUp 1.0s cubic-bezier(0.4, 0, 0.2, 1); z-index: 10; }
+          .anim-arc-down { animation: arcDown 1.0s cubic-bezier(0.4, 0, 0.2, 1); z-index: 10; }
+        `}</style>
+        {label && <h4 className="text-sm font-bold text-gray-500 mb-6">{label}</h4>}
+        <div className="relative" style={{ width: totalWidth, height: 160 }}>
+          {/* Stationary placeholders (Indices and Pointers) */}
+          {arr.map((_, idx) => {
+            const leftPos = idx * BLOCK_WIDTH;
+            const activePointers = Object.keys(pts).filter(k => pts[k] === idx);
+
+            return (
+              <div 
+                key={`placeholder-${idx}`} 
+                className="absolute flex flex-col items-center"
+                style={{ left: leftPos, width: 64 }}
+              >
+                {/* Empty invisible box to push the labels down exactly where they should be */}
+                <div className="w-12 h-12 md:w-16 md:h-16 flex items-center justify-center mb-0"></div>
+                <div className="text-xs text-slate-400 mt-2 font-bold">{idx}</div>
+                
+                {/* Pointer Arrows below */}
+                <div className="h-20 flex flex-col items-center mt-1 space-y-0.5">
+                  {activePointers.map((pName, pIdx) => {
+                    const pColor = getPointerColor(pName);
+                    return (
+                      <div key={pIdx} className={`flex flex-col items-center pointer-arrow font-bold ${pColor} text-xs`}>
+                        <svg className="w-3 h-3 fill-current mb-0.5" viewBox="0 0 20 20">
+                          <path d="M10 0l5 5h-3v15H8V5H5z"/>
+                        </svg>
+                        <span className="whitespace-nowrap bg-white/80 px-1 rounded">{pName}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="text-xs text-gray-400 mt-1">{idx}</div>
-              
-              {/* Pointer Arrows below */}
-              <div className="h-20 flex flex-col items-center mt-1 space-y-0.5">
-                {activePointers.map((pName, pIdx) => {
-                  const pColor = getPointerColor(pName);
-                  return (
-                    <div key={pIdx} className={`flex flex-col items-center pointer-arrow font-bold ${pColor} text-xs`}>
-                      <svg className="w-3 h-3 fill-current mb-0.5" viewBox="0 0 20 20">
-                        <path d="M10 0l5 5h-3v15H8V5H5z"/>
-                      </svg>
-                      <span className="whitespace-nowrap bg-white/80 px-1 rounded">{pName}</span>
-                    </div>
-                  );
-                })}
+            );
+          })}
+
+          {/* Moving Array Boxes */}
+          {arr.map((val, idx) => {
+            const bgColor = cls[idx] || 'bg-white';
+            
+            // Generate stable key
+            let key = (typeof val === 'object' && val !== null && val.id) ? val.id : `fallback-${idx}-${val}`;
+            console.log(`RenderBox: idx=${idx}, val=`, val, `key=${key}`);
+            const animClass = animations[key] || '';
+            
+            if (seenKeys.has(key)) key += `-dup-${idx}`;
+            seenKeys.add(key);
+            
+            // Calculate Absolute Position for this index
+            const leftPos = idx * BLOCK_WIDTH;
+            const displayVal = val === null || val === undefined ? "" : String(val);
+
+            return (
+              <div 
+                key={key} 
+                className="absolute flex flex-col items-center transition-all duration-1000 ease-in-out"
+                style={{ 
+                  left: leftPos, 
+                  width: 64
+                }}
+              >
+                {/* Inner div for vertical jump (animClass) */}
+                <div className={`w-full flex flex-col items-center ${animClass}`}>
+                  {/* Array Box */}
+                  <div className={`array-box w-12 h-12 md:w-16 md:h-16 flex items-center justify-center border-2 border-slate-700/20 font-extrabold text-lg rounded-2xl shadow-lg transform transition-colors ${bgColor}`}>
+                    {displayVal}
+                  </div>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="flex flex-col items-center justify-center w-full overflow-x-auto py-4">
@@ -1239,27 +1348,173 @@ const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, a
 
 const ALGORITHMS = {
   // Vergleichsbasiert
-  "bubble": { name: "BubbleSort", category: "Vergleichsbasiert", type: "array", gen: bubbleSortSteps },
-  "insertion": { name: "InsertionSort", category: "Vergleichsbasiert", type: "array", gen: insertionSortSteps },
-  "selection": { name: "SelectionSort", category: "Vergleichsbasiert", type: "array", gen: selectionSortSteps },
-  "cocktail": { name: "CocktailShakerSort", category: "Vergleichsbasiert", type: "array", gen: cocktailShakerSortSteps },
-  "quick": { name: "QuickSort", category: "Vergleichsbasiert", type: "array", gen: quickSortSteps },
-  "merge": { name: "MergeSort", category: "Vergleichsbasiert", type: "array", gen: mergeSortSteps },
-  "heap": { name: "HeapSort", category: "Vergleichsbasiert", type: "array", gen: heapSortSteps },
+  "bubble": { name: "BubbleSort", category: "Vergleichsbasiert", type: "array", complexity: "O(n²)", gen: bubbleSortSteps },
+  "insertion": { name: "InsertionSort", category: "Vergleichsbasiert", type: "array", complexity: "O(n²)", gen: insertionSortSteps },
+  "selection": { name: "SelectionSort", category: "Vergleichsbasiert", type: "array", complexity: "O(n²)", gen: selectionSortSteps },
+  "cocktail": { name: "CocktailShakerSort", category: "Vergleichsbasiert", type: "array", complexity: "O(n²)", gen: cocktailShakerSortSteps },
+  "quick": { name: "QuickSort", category: "Vergleichsbasiert", type: "array", complexity: "O(n log n)", gen: quickSortSteps },
+  "merge": { name: "MergeSort", category: "Vergleichsbasiert", type: "array", complexity: "O(n log n)", gen: mergeSortSteps },
+  "heap": { name: "HeapSort", category: "Vergleichsbasiert", type: "array", complexity: "O(n log n)", gen: heapSortSteps },
   
   // Linear
-  "radix": { name: "RadixSort (Base 10)", category: "Linearzeit", type: "array", gen: radixSortSteps },
+  "radix": { name: "RadixSort (Base 10)", category: "Linearzeit", type: "array", complexity: "O(n)", gen: radixSortSteps },
+  "counting": { name: "CountingSort", category: "Linearzeit", type: "array", complexity: "O(n)", gen: countingSortSteps },
   
   // Bäume
-  "bst_insert": { name: "BST Insert", category: "Bäume", type: "tree", gen: bstInsertSteps },
-  "bst_search": { name: "BST Search", category: "Bäume", type: "tree", gen: bstSearchSteps },
-  "bst_delete": { name: "BST Delete", category: "Bäume", type: "tree", gen: bstDeleteSteps },
-  "rbt_insert": { name: "RBT Insert & Fixup", category: "Bäume", type: "tree", gen: rbtInsertSteps },
-  "rbt_delete": { name: "RBT Delete", category: "Bäume", type: "tree", gen: rbtDeleteSteps },
+  "bst_insert": { name: "BST Insert", category: "Bäume", type: "tree", complexity: "O(log n)", gen: bstInsertSteps },
+  "bst_search": { name: "BST Search", category: "Bäume", type: "tree", complexity: "O(log n)", gen: bstSearchSteps },
+  "bst_delete": { name: "BST Delete", category: "Bäume", type: "tree", complexity: "O(log n)", gen: bstDeleteSteps },
+  "rbt_insert": { name: "RBT Insert & Fixup", category: "Bäume", type: "tree", complexity: "O(log n)", gen: rbtInsertSteps },
+  "rbt_delete": { name: "RBT Delete", category: "Bäume", type: "tree", complexity: "O(log n)", gen: rbtDeleteSteps },
   
   // Easter Eggs
-  "bogo": { name: "BogoSort", category: "Easter Eggs", type: "array", gen: bogoSortSteps },
-  "spaghetti": { name: "SpaghettiSort", category: "Easter Eggs", type: "array", gen: spaghettiSortSteps }
+  "bogo": { name: "BogoSort", category: "Easter Eggs", type: "array", complexity: "O(n!)", gen: bogoSortSteps },
+  "spaghetti": { name: "SpaghettiSort", category: "Easter Eggs", type: "array", complexity: "O(n)", gen: spaghettiSortSteps }
+};
+
+const ComplexityChart = ({ currentComplexity }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [toggledCurves, setToggledCurves] = useState({});
+
+  const toggleCurve = (label) => {
+    setToggledCurves(prev => ({
+      ...prev,
+      [label]: !prev[label]
+    }));
+  };
+
+  // Helper to render the chart content
+  const renderChart = (isLarge) => {
+    const width = isLarge ? 600 : 200;
+    const height = isLarge ? 400 : 150;
+    const padding = isLarge ? 40 : 20;
+
+    const drawPath = (fn, color, label, isCurrent) => {
+      let path = `M ${padding} ${height - padding}`;
+      for (let x = 1; x <= 10; x++) {
+        let yVal = fn(x);
+        let scaledY = Math.min(height - padding, (yVal / 20) * (height - 2*padding));
+        let px = padding + (x / 10) * (width - 2*padding);
+        let py = height - padding - scaledY;
+        path += ` L ${px} ${py}`;
+      }
+      
+      const isActive = isCurrent || (isLarge && toggledCurves[label]);
+      const opacity = isActive ? 1 : 0.2;
+      const strokeWidth = isActive ? (isLarge ? 5 : 3) : (isLarge ? 2 : 1.5);
+      const fontSize = isLarge ? "14" : "10";
+      const showLabel = isCurrent || (isLarge && toggledCurves[label]);
+      
+      return (
+        <g key={label} opacity={opacity}>
+          <path d={path} fill="none" stroke={color} strokeWidth={strokeWidth} />
+          {showLabel && (
+            <text 
+              x={width - padding + 5} 
+              y={height - padding - (fn(10)/20 * (height - 2*padding))} 
+              fill={color} 
+              fontSize={fontSize} 
+              fontWeight="bold"
+            >
+              {label}
+            </text>
+          )}
+        </g>
+      );
+    };
+
+    const curves = [
+      { label: "O(log n)", fn: x => Math.log2(x+1) * 3, color: "#10b981" },
+      { label: "O(√n)", fn: x => Math.sqrt(x) * 2.5, color: "#06b6d4" },
+      { label: "O(n)", fn: x => x * 1.5, color: "#3b82f6" },
+      { label: "O(n log n)", fn: x => x * Math.log2(x+1) * 0.8, color: "#f59e0b" },
+      { label: "O(n²)", fn: x => x * x * 0.3, color: "#ef4444" },
+      { label: "O(2ⁿ)", fn: x => Math.pow(2, x) * 0.1, color: "#f43f5e" },
+      { label: "O(n!)", fn: x => (x === 1 ? 1 : x === 2 ? 2 : x === 3 ? 6 : x === 4 ? 24 : 100), color: "#9333ea" }
+    ];
+
+    return (
+      <svg width="100%" height={height} viewBox={`0 0 ${width + 80} ${height}`}>
+        <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="#94a3b8" strokeWidth="2" />
+        <line x1={padding} y1={height - padding} x2={width} y2={height - padding} stroke="#94a3b8" strokeWidth="2" />
+        <text x={padding - (isLarge ? 20 : 10)} y={padding} fill="#94a3b8" fontSize={isLarge ? "16" : "10"}>t</text>
+        <text x={width} y={height - padding + (isLarge ? 20 : 12)} fill="#94a3b8" fontSize={isLarge ? "16" : "10"}>n</text>
+        {curves.map(c => drawPath(c.fn, c.color, c.label, currentComplexity === c.label))}
+      </svg>
+    );
+  };
+
+  const getLegendItemClass = (label) => {
+    const isBaseActive = currentComplexity === label;
+    const isToggled = toggledCurves[label];
+    const isActive = isBaseActive || isToggled;
+    return `flex items-center gap-2 cursor-pointer transition-all hover:opacity-100 ${isActive ? 'opacity-100 font-bold' : 'opacity-40'}`;
+  };
+
+  return (
+    <>
+      {/* Small version (clickable) */}
+      <div 
+        onClick={() => setIsExpanded(true)}
+        className="bg-white/70 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/50 w-full xl:w-64 cursor-pointer hover:bg-white/90 transition-colors group"
+      >
+        <h3 className="text-sm font-bold text-slate-700 mb-2 flex justify-between items-center">
+          Laufzeit-Vergleich
+          <span className="text-xs text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">Vergrößern 🔍</span>
+        </h3>
+        {renderChart(false)}
+        <div className="text-xs text-slate-500 mt-2">Aktuell: <strong className="text-slate-800">{currentComplexity || "Unbekannt"}</strong></div>
+      </div>
+
+      {/* Expanded Modal */}
+      {isExpanded && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsExpanded(false)}>
+          <div className="bg-white/90 backdrop-blur-lg p-8 rounded-3xl shadow-2xl border border-white/50 max-w-4xl w-full mx-4 relative" onClick={e => e.stopPropagation()}>
+            <button 
+              onClick={() => setIsExpanded(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-800 bg-slate-200/50 hover:bg-slate-200 rounded-full w-8 h-8 flex items-center justify-center transition-colors font-bold"
+            >
+              ✕
+            </button>
+            <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600 mb-6">
+              Komplexitätsklassen im Vergleich
+            </h2>
+            <div className="flex flex-col md:flex-row gap-8 items-center">
+              <div className="flex-1 w-full">
+                {renderChart(true)}
+              </div>
+              <div className="w-full md:w-64 bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                <h4 className="font-bold text-slate-700 mb-4">Legende (Klick zum Einblenden)</h4>
+                <ul className="space-y-3 text-sm select-none">
+                  <li onClick={() => toggleCurve('O(log n)')} className={getLegendItemClass('O(log n)')}>
+                    <span className="w-3 h-3 rounded-full bg-[#10b981]"></span> O(log n) - Logarithmisch
+                  </li>
+                  <li onClick={() => toggleCurve('O(√n)')} className={getLegendItemClass('O(√n)')}>
+                    <span className="w-3 h-3 rounded-full bg-[#06b6d4]"></span> O(√n) - Wurzelfunktion
+                  </li>
+                  <li onClick={() => toggleCurve('O(n)')} className={getLegendItemClass('O(n)')}>
+                    <span className="w-3 h-3 rounded-full bg-[#3b82f6]"></span> O(n) - Linear
+                  </li>
+                  <li onClick={() => toggleCurve('O(n log n)')} className={getLegendItemClass('O(n log n)')}>
+                    <span className="w-3 h-3 rounded-full bg-[#f59e0b]"></span> O(n log n) - Quasilinear
+                  </li>
+                  <li onClick={() => toggleCurve('O(n²)')} className={getLegendItemClass('O(n²)')}>
+                    <span className="w-3 h-3 rounded-full bg-[#ef4444]"></span> O(n²) - Quadratisch
+                  </li>
+                  <li onClick={() => toggleCurve('O(2ⁿ)')} className={getLegendItemClass('O(2ⁿ)')}>
+                    <span className="w-3 h-3 rounded-full bg-[#f43f5e]"></span> O(2ⁿ) - Exponentiell
+                  </li>
+                  <li onClick={() => toggleCurve('O(n!)')} className={getLegendItemClass('O(n!)')}>
+                    <span className="w-3 h-3 rounded-full bg-[#9333ea]"></span> O(n!) - Faktoriell
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 };
 
 const App = () => {
@@ -1268,14 +1523,26 @@ const App = () => {
   const [history, setHistory] = useState([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed] = useState(800);
+  const [speed, setSpeed] = useState(1500);
   
   const timerRef = useRef(null);
 
   const startSimulation = useCallback(() => {
-    let values = inputValues.split(",").map(s => parseInt(s.trim())).filter(n => !isNaN(n));
-    if (values.length > 15) values = values.slice(0, 15);
-    if (values.length === 0) values = generateRandomArray(8);
+    let rawValues = inputValues.split(",").map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+    if (rawValues.length > 15) rawValues = rawValues.slice(0, 15);
+    if (rawValues.length === 0) rawValues = generateRandomArray(8);
+    
+    // Wrap primitives in stable objects for animation tracking
+    class StableElement {
+      constructor(id, val) {
+        this.id = id;
+        this.val = val;
+      }
+      valueOf() { return this.val; }
+      toString() { return this.val.toString(); }
+    }
+    
+    const values = rawValues.map((v, i) => new StableElement(`el-${i}-${v}`, v));
     
     const algoDef = ALGORITHMS[selectedAlgo];
     const newHistory = generateAlgorithmHistory(algoDef.gen, values);
@@ -1284,7 +1551,7 @@ const App = () => {
     setIsPlaying(false);
   }, [inputValues, selectedAlgo]);
 
-  useEffect(() => { startSimulation(); }, []);
+  useEffect(() => { startSimulation(); }, [startSimulation]);
 
   const currentStep = history[stepIndex];
   const isQuizActive = currentStep?.isQuizPoint && !currentStep?.quizPassed;
@@ -1306,7 +1573,7 @@ const App = () => {
       if (prevStep && prevStep.isQuizPoint) prevStep.quizPassed = false;
     }
   };
-  const handleQuizCorrect = () => {
+  const handleQuizPass = () => {
     const newHistory = [...history];
     newHistory[stepIndex].quizPassed = true;
     setHistory(newHistory);
@@ -1314,135 +1581,171 @@ const App = () => {
 
   const currentAlgoDef = ALGORITHMS[selectedAlgo];
 
-  // Kategorien gruppieren
   const categories = {};
   Object.entries(ALGORITHMS).forEach(([k, v]) => {
     if (!categories[v.category]) categories[v.category] = [];
     categories[v.category].push({ id: k, ...v });
   });
 
+  // Calculate live stats
+  let comparisons = 0;
+  let swaps = 0;
+  for (let i = 0; i <= stepIndex; i++) {
+    const stepText = history[i]?.explanation || "";
+    if (stepText.includes("Vergleich")) comparisons++;
+    if (stepText.includes("Tausche") || stepText.includes("Getauscht") || stepText.includes("Schreibe") || stepText.includes("Setze")) swaps++;
+  }
+
   return (
-    <div className="min-h-screen flex flex-col items-center py-6 px-4 max-w-6xl mx-auto">
-      <h1 className="text-3xl font-extrabold text-gray-900 mb-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600">
-        Algo & Datenstrukturen Visualisierer
-      </h1>
-      
-      {/* Control Panel */}
-      <div className="bg-white p-6 rounded-lg shadow-md w-full mb-6 border-t-4 border-blue-500 flex flex-col gap-4">
+    <div className="min-h-screen flex flex-col items-center py-8 px-4 w-full bg-gradient-to-br from-slate-200 to-gray-300 font-sans text-slate-800">
+      <div className="max-w-7xl w-full">
+        <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 mb-8 text-center drop-shadow-sm">
+          Algo & Datenstrukturen Visualisierer
+        </h1>
         
-        <div className="flex flex-wrap gap-4 items-end">
-          <div className="flex-grow">
-            <label className="block text-sm font-bold text-gray-700 mb-2">Algorithmus wählen:</label>
-            <div className="flex flex-wrap gap-2">
-              {Object.keys(categories).map(catName => (
-                <div key={catName} className="flex flex-col border border-gray-200 rounded p-2 bg-gray-50">
-                  <span className="text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">{catName}</span>
-                  <div className="flex gap-1 flex-wrap">
-                    {categories[catName].map(algo => (
-                      <button 
-                        key={algo.id}
-                        onClick={() => setSelectedAlgo(algo.id)}
-                        className={`text-sm px-3 py-1 rounded transition-colors ${selectedAlgo === algo.id ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-700 border hover:bg-blue-50'}`}
-                      >
-                        {algo.name}
-                      </button>
-                    ))}
+        {/* Main Layout: Settings on top, Content side-by-side if large */}
+        <div className="bg-white/70 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/50 w-full mb-8 flex flex-col lg:flex-row gap-6">
+          <div className="flex-grow flex flex-col gap-4">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">Algorithmus wählen:</label>
+              <div className="flex flex-wrap gap-2">
+                {Object.keys(categories).map(catName => (
+                  <div key={catName} className="flex flex-col border border-white/40 bg-white/40 rounded-xl p-3 shadow-sm">
+                    <span className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">{catName}</span>
+                    <div className="flex gap-2 flex-wrap">
+                      {categories[catName].map(algo => (
+                        <button 
+                          key={algo.id}
+                          onClick={() => setSelectedAlgo(algo.id)}
+                          className={`text-sm px-4 py-2 rounded-lg font-medium transition-all ${selectedAlgo === algo.id ? 'bg-indigo-600 text-white shadow-md transform scale-105' : 'bg-white/80 text-slate-700 hover:bg-white hover:shadow'}`}
+                        >
+                          {algo.name}
+                        </button>
+                      ))}
+                    </div>
                   </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-4 items-end mt-2">
+              <div className="flex-grow">
+                <label className="block text-sm font-bold text-slate-700 mb-1">Eingabewerte (kommagetrennt, max 15):</label>
+                <input 
+                  type="text" 
+                  value={inputValues}
+                  onChange={(e) => setInputValues(e.target.value)}
+                  className="border border-slate-300 p-3 rounded-xl w-full focus:ring-2 focus:ring-indigo-500 bg-white/90 shadow-inner"
+                />
+              </div>
+              <button 
+                onClick={startSimulation}
+                className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg transition-all transform hover:scale-105 whitespace-nowrap"
+              >
+                Visualisieren
+              </button>
+            </div>
+          </div>
+          
+          {/* Complexity Chart Panel */}
+          <div className="flex-shrink-0 flex items-center justify-center border-t lg:border-t-0 lg:border-l border-slate-300/50 pt-4 lg:pt-0 lg:pl-6">
+            <ComplexityChart currentComplexity={currentAlgoDef.complexity} />
+          </div>
+        </div>
+
+        <div className="flex flex-col xl:flex-row w-full gap-6">
+          {/* Main Visualizer Area */}
+          <div className="flex-grow flex flex-col bg-white/80 backdrop-blur-sm rounded-2xl shadow-2xl overflow-hidden border border-white/60 min-w-0 relative">
+            
+            <div className="bg-slate-900/90 backdrop-blur text-white p-5 min-h-[90px] flex items-center justify-center text-center shadow-inner">
+              <p className="text-xl font-mono tracking-wide">{currentStep?.explanation || "Bereit."}</p>
+            </div>
+            
+            {/* Legend & Stats Overlay */}
+            <div className="absolute top-[100px] left-4 flex gap-4 pointer-events-none z-10 hidden sm:flex">
+              <div className="bg-white/80 backdrop-blur p-2 rounded-lg shadow-sm text-xs font-bold text-slate-700 flex flex-col gap-1 border border-white">
+                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-green-500 rounded-sm"></div> Sortiert</div>
+                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-yellow-400 rounded-sm"></div> Vergleichen</div>
+                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-500 rounded-sm"></div> Tauschen</div>
+                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-500 rounded-sm"></div> Zeiger</div>
+              </div>
+            </div>
+            
+            <div className="absolute top-[100px] right-4 pointer-events-none z-10 hidden sm:block">
+              <div className="bg-white/90 backdrop-blur p-3 rounded-xl shadow-md border border-white flex gap-4 text-center">
+                <div>
+                  <div className="text-xs text-slate-500 font-bold uppercase">Vergleiche</div>
+                  <div className="text-xl font-black text-indigo-600">{comparisons}</div>
                 </div>
-              ))}
+                <div className="w-px bg-slate-200"></div>
+                <div>
+                  <div className="text-xs text-slate-500 font-bold uppercase">Schreibzugriffe</div>
+                  <div className="text-xl font-black text-rose-500">{swaps}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 md:p-8 pt-24 md:pt-28 flex justify-center items-center min-h-[450px] relative bg-slate-50/50">
+              {currentAlgoDef.type === "array" && currentStep && (
+                <ArrayVisualizer 
+                  array={currentStep.array} 
+                  pointers={currentStep.pointers} 
+                  colors={currentStep.colors} 
+                  auxArray={currentStep.auxArray}
+                  auxPointers={currentStep.auxPointers}
+                  auxColors={currentStep.auxColors}
+                  auxLabel={currentStep.auxLabel}
+                />
+              )}
+              
+              {currentAlgoDef.type === "tree" && currentStep && (
+                <TreeVisualizer 
+                  treeState={currentStep} 
+                  isRBT={selectedAlgo.startsWith("rbt")}
+                />
+              )}
+            </div>
+            
+            <div className="bg-white/90 p-5 flex items-center justify-center gap-6 border-t border-slate-200 flex-wrap shadow-inner">
+              <button onClick={handlePrev} disabled={stepIndex === 0} className="px-6 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl disabled:opacity-50 font-bold transition-colors">
+                {"<<"} Zurück
+              </button>
+              <button 
+                onClick={() => setIsPlaying(!isPlaying)} 
+                disabled={isQuizActive || stepIndex === history.length - 1}
+                className={`px-8 py-3 text-white rounded-xl font-extrabold shadow-lg transition-transform transform hover:scale-105 ${isPlaying ? 'bg-rose-500 hover:bg-rose-600' : 'bg-indigo-600 hover:bg-indigo-700'} disabled:opacity-50 disabled:transform-none w-32`}
+              >
+                {isPlaying ? "Pause" : "Play"}
+              </button>
+              <button onClick={handleNext} disabled={stepIndex === history.length - 1 || isQuizActive} className="px-6 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl disabled:opacity-50 font-bold transition-colors">
+                Vorwärts {">>"}
+              </button>
+              
+              <div className="flex items-center ml-auto">
+                 <span className="text-sm font-bold text-slate-600 mr-3">Tempo:</span>
+                 <input type="range" min="100" max="2000" step="100" value={2100 - speed} onChange={(e) => setSpeed(2100 - parseInt(e.target.value))} className="w-32 accent-indigo-600" />
+              </div>
+            </div>
+            
+            <div className="w-full bg-slate-200 h-3 relative overflow-hidden">
+              <div 
+                className="bg-indigo-500 h-full transition-all duration-300 shadow-[0_0_12px_rgba(99,102,241,1)]" 
+                style={{ width: `${history.length > 1 ? (stepIndex / (history.length - 1)) * 100 : 0}%` }}
+              ></div>
+            </div>
+            <div className="bg-slate-100 text-center text-xs text-slate-500 py-1 font-medium border-t border-slate-200">
+              Schritt {stepIndex + 1} von {history.length}
             </div>
           </div>
-        </div>
 
-        <div className="flex gap-4 items-end">
-          <div className="flex-grow">
-            <label className="block text-sm font-bold text-gray-700 mb-1">Eingabewerte (kommagetrennt):</label>
-            <input 
-              type="text" 
-              value={inputValues}
-              onChange={(e) => setInputValues(e.target.value)}
-              className="border border-gray-300 p-2 rounded w-full focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <button 
-            onClick={startSimulation}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-8 rounded shadow transition-colors"
-          >
-            Visualisieren!
-          </button>
-        </div>
-
-      </div>
-
-      <div className="flex flex-col xl:flex-row w-full gap-6">
-        
-        {/* Main Visualizer Area */}
-        <div className="flex-grow flex flex-col bg-white rounded-lg shadow-xl overflow-hidden border border-gray-200 min-w-0">
-          
-          <div className="bg-gray-800 text-white p-4 min-h-[80px] flex items-center justify-center text-center">
-            <p className="text-lg font-mono">{currentStep?.explanation || "Bereit."}</p>
-          </div>
-
-          <div className="p-4 md:p-8 flex justify-center items-center min-h-[400px] relative bg-gray-50">
-            {currentAlgoDef.type === "array" && currentStep && (
-              <ArrayVisualizer 
-                array={currentStep.array} 
-                pointers={currentStep.pointers} 
-                colors={currentStep.colors} 
-                auxArray={currentStep.auxArray}
-                auxPointers={currentStep.auxPointers}
-                auxColors={currentStep.auxColors}
-                auxLabel={currentStep.auxLabel}
-              />
-            )}
-            
-            {currentAlgoDef.type === "tree" && currentStep && (
-              <TreeVisualizer 
-                treeState={currentStep} 
-                isRBT={selectedAlgo.startsWith("rbt")}
-              />
-            )}
-          </div>
-          
-          <div className="bg-gray-100 p-4 flex items-center justify-center gap-4 border-t border-gray-200 flex-wrap">
-            <button onClick={handlePrev} disabled={stepIndex === 0} className="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded disabled:opacity-50 font-bold">
-              {"<<"} Zurück
-            </button>
-            <button 
-              onClick={() => setIsPlaying(!isPlaying)} 
-              disabled={isQuizActive || stepIndex === history.length - 1}
-              className={`px-6 py-2 text-white rounded font-bold shadow ${isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'} disabled:opacity-50 w-28`}
-            >
-              {isPlaying ? "Pause" : "Play"}
-            </button>
-            <button onClick={handleNext} disabled={stepIndex === history.length - 1 || isQuizActive} className="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded disabled:opacity-50 font-bold">
-              Vorwärts {">>"}
-            </button>
-            
-            <div className="flex items-center ml-4">
-               <span className="text-sm font-bold text-gray-500 mr-2">Tempo:</span>
-               <input type="range" min="100" max="2000" step="100" value={2100 - speed} onChange={(e) => setSpeed(2100 - parseInt(e.target.value))} className="w-24" />
+          {/* Sidebar for Quiz */}
+          {isQuizActive && currentStep.quiz && (
+            <div className="animate-fade-in-up w-full xl:w-80 flex-shrink-0">
+              <QuizPanel quiz={currentStep.quiz} onCorrect={handleQuizPass} onSkip={handleQuizPass} />
             </div>
-          </div>
-          
-          <div className="w-full bg-gray-300 h-2">
-            <div 
-              className="bg-blue-600 h-2 transition-all duration-300" 
-              style={{ width: `${history.length > 1 ? (stepIndex / (history.length - 1)) * 100 : 0}%` }}
-            ></div>
-          </div>
-          <div className="text-center text-xs text-gray-500 mt-1 pb-2">
-            Schritt {stepIndex + 1} von {history.length}
-          </div>
+          )}
+
         </div>
-
-        {/* Sidebar for Quiz */}
-        {isQuizActive && currentStep.quiz && (
-          <div className="animate-fade-in-up w-full xl:w-80 flex-shrink-0">
-            <QuizPanel quiz={currentStep.quiz} onCorrect={handleQuizCorrect} />
-          </div>
-        )}
-
       </div>
     </div>
   );
