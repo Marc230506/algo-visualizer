@@ -810,6 +810,16 @@ function* mergeSortSteps(arr) {
   function* sort(left, right) {
     if (left < right) {
       let mid = Math.floor((left + right) / 2);
+      
+      let splitColors = {};
+      for(let i=left; i<=mid; i++) splitColors[i] = 'bg-orange-300 text-slate-900';
+      for(let i=mid+1; i<=right; i++) splitColors[i] = 'bg-purple-300 text-slate-900';
+      
+      yield {
+        array: [...array], pointers: { left, mid, right }, colors: splitColors,
+        explanation: `Teile Array-Bereich [${left}..${right}] in linke Hälfte [${left}..${mid}] und rechte Hälfte [${mid+1}..${right}].`
+      };
+
       yield* sort(left, mid);
       yield* sort(mid + 1, right);
       yield* merge(left, mid, right);
@@ -1267,7 +1277,12 @@ const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, a
 
           {/* Moving Array Boxes using Framer Motion */}
           {arr && arr.map((val, idx) => {
-            const bgColor = cls[idx] || 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100';
+            const colorClass = cls[idx];
+            const isCustom = !!colorClass;
+            const hasCustomText = isCustom && colorClass.includes('text-');
+            const bgColor = isCustom 
+              ? (hasCustomText ? colorClass : `${colorClass} text-slate-900`)
+              : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100';
             
             // Generate stable key
             let key = (typeof val === 'object' && val !== null && val.id) ? val.id : `fallback-${idx}-${val}`;
