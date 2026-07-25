@@ -10,18 +10,28 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   
   <!-- Babel Standalone for JSX -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin="anonymous"></script>
   
   <!-- Tailwind CSS via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {}
+      }
+    }
+  </script>
+  
+  <!-- Framer Motion -->
+  <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
   
   <style>
     body {
-      background-color: #f3f4f6;
       font-family: 'Inter', sans-serif;
     }
     .array-box {
-      transition: all 0.3s ease;
+      /* Wir entfernen die statische transition, da Framer Motion das übernimmt */
     }
     .pointer-arrow {
       transition: all 0.3s ease;
@@ -1057,7 +1067,7 @@ const generateAlgorithmHistory = (algoGenerator, arr) => {
 const TreeVisualizer = ({ treeState, isRBT = false }) => {
   if (!treeState || !treeState.nodes) return null;
 
-  const { nodes, rootId, pointers, conflict } = treeState;
+  const { nodes, rootId, pointers = {}, conflict } = treeState;
   
   const nodePositions = {};
   let currentX = 1;
@@ -1068,6 +1078,7 @@ const TreeVisualizer = ({ treeState, isRBT = false }) => {
   const calculateLayout = (nodeId, depth) => {
     if (nodeId === "NIL" || !nodeId) return;
     const node = nodes[nodeId];
+    if (!node) return; // FIX: Handle deleted or missing nodes gracefully
     if (node.left) calculateLayout(node.left, depth + 1);
     nodePositions[nodeId] = { x: currentX * X_SPACING, y: START_Y + depth * Y_SPACING };
     currentX++;
@@ -1172,18 +1183,18 @@ const TreeVisualizer = ({ treeState, isRBT = false }) => {
       </svg>
 
       {isRBT && (
-        <div className="absolute bottom-4 left-4 bg-white/80 backdrop-blur-md p-4 rounded-xl shadow-xl text-xs border border-white/50 z-10 pointer-events-none">
+        <div className="absolute bottom-4 left-4 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md p-4 rounded-xl shadow-xl text-xs border border-white/50 dark:border-slate-700 z-10 pointer-events-none text-slate-800 dark:text-slate-200">
           <h4 className="font-bold mb-2">RB-Eigenschaften:</h4>
           <ul>
-            <li className="text-green-600">✓ E1: Jeder Knoten ist rot/schwarz</li>
-            <li className={nodes[rootId]?.color === 'black' ? "text-green-600" : "text-red-500 font-bold"}>
+            <li className="text-green-600 dark:text-green-400">✓ E1: Jeder Knoten ist rot/schwarz</li>
+            <li className={nodes[rootId]?.color === 'black' ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400 font-bold"}>
               {nodes[rootId]?.color === 'black' ? "✓" : "✗"} E2: Wurzel ist schwarz
             </li>
-            <li className="text-green-600">✓ E3: Blätter (NIL) sind schwarz</li>
-            <li className={!conflict ? "text-green-600" : "text-red-500 font-bold"}>
+            <li className="text-green-600 dark:text-green-400">✓ E3: Blätter (NIL) sind schwarz</li>
+            <li className={!conflict ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400 font-bold"}>
               {!conflict ? "✓" : "✗"} E4: Rot hat nur schwarze Kinder
             </li>
-            <li className="text-gray-500">? E5: Gleiche Schwarz-Höhe (erfüllt)</li>
+            <li className="text-gray-500 dark:text-gray-400">? E5: Gleiche Schwarz-Höhe (erfüllt)</li>
           </ul>
         </div>
       )}
@@ -1196,71 +1207,33 @@ const TreeVisualizer = ({ treeState, isRBT = false }) => {
 // sorting_ui.js
 
 const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, auxPointers = {}, auxColors = {}, auxLabel = "Hilfs-Array" }) => {
-  const prevPositions = useRef({});
-  const [animations, setAnimations] = useState({});
+  const prevPositionsRef = React.useRef({});
 
-  useEffect(() => {
-    let hasChanges = false;
-    const newAnims = {};
-    const currentPositions = {};
+  const renderArray = (arr, pts, cls, label) => {
+    // Determine responsive sizing via a fixed constant for JS calculations
+    const BLOCK_WIDTH = 72; 
+    const totalWidth = arr ? arr.length * BLOCK_WIDTH : 0;
+    const seenKeys = new Set();
     
-    // Check main array
-    if (array) {
-      array.forEach((val, idx) => {
+    // Calculate arcs synchronously during render based on previous positions
+    const arcs = {};
+    if (arr) {
+      arr.forEach((val, idx) => {
         const id = (typeof val === 'object' && val !== null && val.id) ? val.id : `fallback-${idx}-${val}`;
-        currentPositions[id] = idx;
-        
-        if (prevPositions.current[id] !== undefined) {
-          const prevIdx = prevPositions.current[id];
-          if (prevIdx < idx) {
-            newAnims[id] = 'anim-arc-down';
-            hasChanges = true;
-          } else if (prevIdx > idx) {
-            newAnims[id] = 'anim-arc-up';
-            hasChanges = true;
-          }
+        const prevIdx = prevPositionsRef.current[id];
+        if (prevIdx !== undefined) {
+          if (prevIdx < idx) arcs[id] = 65; // Moved right -> arc down
+          else if (prevIdx > idx) arcs[id] = -65; // Moved left -> arc up
         }
       });
     }
 
-    prevPositions.current = { ...currentPositions };
-
-    if (hasChanges) {
-      setAnimations(newAnims);
-      const timer = setTimeout(() => {
-        setAnimations({});
-      }, 1000); // match our transition duration
-      return () => clearTimeout(timer);
-    }
-  }, [array]);
-
-  const renderArray = (arr, pts, cls, label) => {
-    // Determine responsive sizing via a fixed constant for JS calculations
-    // We assume a standard width of 64px (w-16) and 8px gap
-    const BLOCK_WIDTH = 72; 
-    const totalWidth = arr.length * BLOCK_WIDTH;
-    const seenKeys = new Set();
-    
     return (
-      <div className="flex flex-col items-center justify-center w-full my-4 overflow-hidden py-10">
-        <style>{`
-          @keyframes arcUp {
-            0% { transform: translateY(0); z-index: 10; }
-            50% { transform: translateY(-65px); z-index: 10; }
-            100% { transform: translateY(0); z-index: 10; }
-          }
-          @keyframes arcDown {
-            0% { transform: translateY(0); z-index: 10; }
-            50% { transform: translateY(65px); z-index: 10; }
-            100% { transform: translateY(0); z-index: 10; }
-          }
-          .anim-arc-up { animation: arcUp 1.0s cubic-bezier(0.4, 0, 0.2, 1); z-index: 10; }
-          .anim-arc-down { animation: arcDown 1.0s cubic-bezier(0.4, 0, 0.2, 1); z-index: 10; }
-        `}</style>
-        {label && <h4 className="text-sm font-bold text-gray-500 mb-6">{label}</h4>}
+      <div className="flex flex-col items-center justify-center w-full my-4 overflow-visible py-10">
+        {label && <h4 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-6">{label}</h4>}
         <div className="relative" style={{ width: totalWidth, height: 160 }}>
           {/* Stationary placeholders (Indices and Pointers) */}
-          {arr.map((_, idx) => {
+          {arr && arr.map((_, idx) => {
             const leftPos = idx * BLOCK_WIDTH;
             const activePointers = Object.keys(pts).filter(k => pts[k] === idx);
 
@@ -1272,7 +1245,7 @@ const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, a
               >
                 {/* Empty invisible box to push the labels down exactly where they should be */}
                 <div className="w-12 h-12 md:w-16 md:h-16 flex items-center justify-center mb-0"></div>
-                <div className="text-xs text-slate-400 mt-2 font-bold">{idx}</div>
+                <div className="text-xs text-slate-400 dark:text-slate-500 mt-2 font-bold">{idx}</div>
                 
                 {/* Pointer Arrows below */}
                 <div className="h-20 flex flex-col items-center mt-1 space-y-0.5">
@@ -1283,7 +1256,7 @@ const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, a
                         <svg className="w-3 h-3 fill-current mb-0.5" viewBox="0 0 20 20">
                           <path d="M10 0l5 5h-3v15H8V5H5z"/>
                         </svg>
-                        <span className="whitespace-nowrap bg-white/80 px-1 rounded">{pName}</span>
+                        <span className="whitespace-nowrap bg-white/80 dark:bg-slate-800/80 px-1 rounded">{pName}</span>
                       </div>
                     );
                   })}
@@ -1292,45 +1265,61 @@ const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, a
             );
           })}
 
-          {/* Moving Array Boxes */}
-          {arr.map((val, idx) => {
-            const bgColor = cls[idx] || 'bg-white';
+          {/* Moving Array Boxes using Framer Motion */}
+          {arr && arr.map((val, idx) => {
+            const bgColor = cls[idx] || 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100';
             
             // Generate stable key
             let key = (typeof val === 'object' && val !== null && val.id) ? val.id : `fallback-${idx}-${val}`;
-            console.log(`RenderBox: idx=${idx}, val=`, val, `key=${key}`);
-            const animClass = animations[key] || '';
-            
             if (seenKeys.has(key)) key += `-dup-${idx}`;
             seenKeys.add(key);
             
-            // Calculate Absolute Position for this index
             const leftPos = idx * BLOCK_WIDTH;
             const displayVal = val === null || val === undefined ? "" : String(val);
+            const arcY = arcs[key] || 0;
 
             return (
-              <div 
+              <window.Motion.motion.div 
                 key={key} 
-                className="absolute flex flex-col items-center transition-all duration-1000 ease-in-out"
-                style={{ 
-                  left: leftPos, 
-                  width: 64
+                initial={false}
+                animate={{ 
+                  x: leftPos,
+                  y: arcY !== 0 ? [0, arcY, 0] : 0,
+                  transition: { 
+                    x: { duration: 0.5, ease: "easeInOut" },
+                    y: { duration: 0.5, ease: "easeInOut", times: [0, 0.5, 1] }
+                  }
                 }}
+                className="absolute top-0 flex flex-col items-center z-10"
+                style={{ left: 0, width: 64 }}
               >
-                {/* Inner div for vertical jump (animClass) */}
-                <div className={`w-full flex flex-col items-center ${animClass}`}>
-                  {/* Array Box */}
-                  <div className={`array-box w-12 h-12 md:w-16 md:h-16 flex items-center justify-center border-2 border-slate-700/20 font-extrabold text-lg rounded-2xl shadow-lg transform transition-colors ${bgColor}`}>
-                    {displayVal}
-                  </div>
+                <div className={`array-box w-12 h-12 md:w-16 md:h-16 flex items-center justify-center border-2 border-slate-700/20 dark:border-slate-500/30 font-extrabold text-lg rounded-2xl shadow-lg transition-colors duration-300 ${bgColor}`}>
+                  {displayVal}
                 </div>
-              </div>
+              </window.Motion.motion.div>
             );
           })}
         </div>
       </div>
     );
   };
+
+  React.useEffect(() => {
+    const currentPositions = {};
+    if (array) {
+      array.forEach((val, idx) => {
+        const id = (typeof val === 'object' && val !== null && val.id) ? val.id : `fallback-${idx}-${val}`;
+        currentPositions[id] = idx;
+      });
+    }
+    if (auxArray) {
+      auxArray.forEach((val, idx) => {
+        const id = (typeof val === 'object' && val !== null && val.id) ? val.id : `aux-fallback-${idx}-${val}`;
+        currentPositions[id] = idx;
+      });
+    }
+    prevPositionsRef.current = currentPositions;
+  }, [array, auxArray]);
 
   return (
     <div className="flex flex-col items-center justify-center w-full overflow-x-auto py-4">
@@ -1341,6 +1330,7 @@ const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, a
     </div>
   );
 };
+
 
 
 // --- FILE: app.js ---
@@ -1524,6 +1514,12 @@ const App = () => {
   const [stepIndex, setStepIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1500);
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  
+  useEffect(() => {
+    if (isDarkMode) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
+  }, [isDarkMode]);
   
   const timerRef = useRef(null);
 
@@ -1542,9 +1538,9 @@ const App = () => {
       toString() { return this.val.toString(); }
     }
     
-    const values = rawValues.map((v, i) => new StableElement(`el-${i}-${v}`, v));
-    
     const algoDef = ALGORITHMS[selectedAlgo];
+    const values = algoDef.type === "array" ? rawValues.map((v, i) => new StableElement(`el-${i}-${v}`, v)) : rawValues;
+    
     const newHistory = generateAlgorithmHistory(algoDef.gen, values);
     setHistory(newHistory);
     setStepIndex(0);
@@ -1597,27 +1593,36 @@ const App = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center py-8 px-4 w-full bg-gradient-to-br from-slate-200 to-gray-300 font-sans text-slate-800">
+    <div className="min-h-screen flex flex-col items-center py-8 px-4 w-full bg-gradient-to-br from-slate-200 to-gray-300 dark:from-slate-900 dark:to-slate-800 font-sans text-slate-800 dark:text-slate-100 transition-colors duration-500">
       <div className="max-w-7xl w-full">
-        <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 mb-8 text-center drop-shadow-sm">
-          Algo & Datenstrukturen Visualisierer
-        </h1>
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400 drop-shadow-sm">
+            Algo & Datenstrukturen Visualisierer
+          </h1>
+          <button 
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className="p-3 rounded-full bg-white/50 dark:bg-slate-800/50 shadow hover:bg-white dark:hover:bg-slate-700 transition-colors"
+            title="Dark Mode Toggle"
+          >
+            {isDarkMode ? "☀️" : "🌙"}
+          </button>
+        </div>
         
         {/* Main Layout: Settings on top, Content side-by-side if large */}
-        <div className="bg-white/70 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/50 w-full mb-8 flex flex-col lg:flex-row gap-6">
+        <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/50 dark:border-slate-700 w-full mb-8 flex flex-col lg:flex-row gap-6">
           <div className="flex-grow flex flex-col gap-4">
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Algorithmus wählen:</label>
+              <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Algorithmus wählen:</label>
               <div className="flex flex-wrap gap-2">
                 {Object.keys(categories).map(catName => (
-                  <div key={catName} className="flex flex-col border border-white/40 bg-white/40 rounded-xl p-3 shadow-sm">
-                    <span className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">{catName}</span>
+                  <div key={catName} className="flex flex-col border border-white/40 dark:border-slate-700/50 bg-white/40 dark:bg-slate-700/30 rounded-xl p-3 shadow-sm">
+                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">{catName}</span>
                     <div className="flex gap-2 flex-wrap">
                       {categories[catName].map(algo => (
                         <button 
                           key={algo.id}
                           onClick={() => setSelectedAlgo(algo.id)}
-                          className={`text-sm px-4 py-2 rounded-lg font-medium transition-all ${selectedAlgo === algo.id ? 'bg-indigo-600 text-white shadow-md transform scale-105' : 'bg-white/80 text-slate-700 hover:bg-white hover:shadow'}`}
+                          className={`text-sm px-4 py-2 rounded-lg font-medium transition-all ${selectedAlgo === algo.id ? 'bg-indigo-600 text-white shadow-md transform scale-105' : 'bg-white/80 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-600 hover:shadow'}`}
                         >
                           {algo.name}
                         </button>
@@ -1630,12 +1635,12 @@ const App = () => {
 
             <div className="flex flex-col sm:flex-row gap-4 items-end mt-2">
               <div className="flex-grow">
-                <label className="block text-sm font-bold text-slate-700 mb-1">Eingabewerte (kommagetrennt, max 15):</label>
+                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Eingabewerte (kommagetrennt, max 15):</label>
                 <input 
                   type="text" 
                   value={inputValues}
                   onChange={(e) => setInputValues(e.target.value)}
-                  className="border border-slate-300 p-3 rounded-xl w-full focus:ring-2 focus:ring-indigo-500 bg-white/90 shadow-inner"
+                  className="border border-slate-300 dark:border-slate-600 p-3 rounded-xl w-full focus:ring-2 focus:ring-indigo-500 bg-white/90 dark:bg-slate-700 dark:text-white shadow-inner"
                 />
               </div>
               <button 
@@ -1655,7 +1660,7 @@ const App = () => {
 
         <div className="flex flex-col xl:flex-row w-full gap-6">
           {/* Main Visualizer Area */}
-          <div className="flex-grow flex flex-col bg-white/80 backdrop-blur-sm rounded-2xl shadow-2xl overflow-hidden border border-white/60 min-w-0 relative">
+          <div className="flex-grow flex flex-col bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl shadow-2xl overflow-hidden border border-white/60 dark:border-slate-700 min-w-0 relative">
             
             <div className="bg-slate-900/90 backdrop-blur text-white p-5 min-h-[90px] flex items-center justify-center text-center shadow-inner">
               <p className="text-xl font-mono tracking-wide">{currentStep?.explanation || "Bereit."}</p>
@@ -1663,7 +1668,7 @@ const App = () => {
             
             {/* Legend & Stats Overlay */}
             <div className="absolute top-[100px] left-4 flex gap-4 pointer-events-none z-10 hidden sm:flex">
-              <div className="bg-white/80 backdrop-blur p-2 rounded-lg shadow-sm text-xs font-bold text-slate-700 flex flex-col gap-1 border border-white">
+              <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur p-2 rounded-lg shadow-sm text-xs font-bold text-slate-700 dark:text-slate-200 flex flex-col gap-1 border border-white dark:border-slate-600">
                 <div className="flex items-center gap-2"><div className="w-3 h-3 bg-green-500 rounded-sm"></div> Sortiert</div>
                 <div className="flex items-center gap-2"><div className="w-3 h-3 bg-yellow-400 rounded-sm"></div> Vergleichen</div>
                 <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-500 rounded-sm"></div> Tauschen</div>
@@ -1672,20 +1677,20 @@ const App = () => {
             </div>
             
             <div className="absolute top-[100px] right-4 pointer-events-none z-10 hidden sm:block">
-              <div className="bg-white/90 backdrop-blur p-3 rounded-xl shadow-md border border-white flex gap-4 text-center">
+              <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur p-3 rounded-xl shadow-md border border-white dark:border-slate-700 flex gap-4 text-center">
                 <div>
-                  <div className="text-xs text-slate-500 font-bold uppercase">Vergleiche</div>
-                  <div className="text-xl font-black text-indigo-600">{comparisons}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase">Vergleiche</div>
+                  <div className="text-xl font-black text-indigo-600 dark:text-indigo-400">{comparisons}</div>
                 </div>
-                <div className="w-px bg-slate-200"></div>
+                <div className="w-px bg-slate-200 dark:bg-slate-600"></div>
                 <div>
-                  <div className="text-xs text-slate-500 font-bold uppercase">Schreibzugriffe</div>
-                  <div className="text-xl font-black text-rose-500">{swaps}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase">Schreibzugriffe</div>
+                  <div className="text-xl font-black text-rose-500 dark:text-rose-400">{swaps}</div>
                 </div>
               </div>
             </div>
 
-            <div className="p-4 md:p-8 pt-24 md:pt-28 flex justify-center items-center min-h-[450px] relative bg-slate-50/50">
+            <div className="p-4 md:p-8 pt-24 md:pt-28 flex justify-center items-center min-h-[450px] relative bg-slate-50/50 dark:bg-slate-900/30">
               {currentAlgoDef.type === "array" && currentStep && (
                 <ArrayVisualizer 
                   array={currentStep.array} 
@@ -1706,8 +1711,8 @@ const App = () => {
               )}
             </div>
             
-            <div className="bg-white/90 p-5 flex items-center justify-center gap-6 border-t border-slate-200 flex-wrap shadow-inner">
-              <button onClick={handlePrev} disabled={stepIndex === 0} className="px-6 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl disabled:opacity-50 font-bold transition-colors">
+            <div className="bg-white/90 dark:bg-slate-800/90 p-5 flex items-center justify-center gap-6 border-t border-slate-200 dark:border-slate-700 flex-wrap shadow-inner">
+              <button onClick={handlePrev} disabled={stepIndex === 0} className="px-6 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl disabled:opacity-50 font-bold transition-colors">
                 {"<<"} Zurück
               </button>
               <button 
@@ -1717,13 +1722,18 @@ const App = () => {
               >
                 {isPlaying ? "Pause" : "Play"}
               </button>
-              <button onClick={handleNext} disabled={stepIndex === history.length - 1 || isQuizActive} className="px-6 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl disabled:opacity-50 font-bold transition-colors">
+              <button onClick={handleNext} disabled={stepIndex === history.length - 1 || isQuizActive} className="px-6 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl disabled:opacity-50 font-bold transition-colors">
                 Vorwärts {">>"}
               </button>
               
-              <div className="flex items-center ml-auto">
-                 <span className="text-sm font-bold text-slate-600 mr-3">Tempo:</span>
-                 <input type="range" min="100" max="2000" step="100" value={2100 - speed} onChange={(e) => setSpeed(2100 - parseInt(e.target.value))} className="w-32 accent-indigo-600" />
+              <div className="flex items-center gap-2 border-l border-slate-300 dark:border-slate-600 pl-6 ml-2">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Tempo</span>
+                <input 
+                  type="range" min="100" max="3000" step="100" 
+                  value={3100 - speed} 
+                  onChange={e => setSpeed(3100 - parseInt(e.target.value))}
+                  className="w-24 md:w-32 accent-indigo-600"
+                />
               </div>
             </div>
             
