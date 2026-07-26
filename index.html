@@ -489,6 +489,52 @@ function* rbtDeleteSteps(values) {
     state.nodes[state.rootId].color = "black";
   };
   
+  // Helper functions for deletion
+  const transplant = (u, v) => {
+    if (state.nodes[u].parent === "NIL") {
+      state.rootId = v;
+    } else if (u === state.nodes[state.nodes[u].parent].left) {
+      state.nodes[state.nodes[u].parent].left = v;
+    } else {
+      state.nodes[state.nodes[u].parent].right = v;
+    }
+    if (v !== "NIL") {
+      state.nodes[v].parent = state.nodes[u].parent;
+    }
+  };
+
+  const treeMinimum = (nodeId) => {
+    while (state.nodes[nodeId].left !== "NIL") {
+      nodeId = state.nodes[nodeId].left;
+    }
+    return nodeId;
+  };
+  
+  // Rotations for delete fixup
+  const leftRotate = (x) => {
+    let y = state.nodes[x].right;
+    state.nodes[x].right = state.nodes[y].left;
+    if (state.nodes[y].left !== "NIL") state.nodes[state.nodes[y].left].parent = x;
+    state.nodes[y].parent = state.nodes[x].parent;
+    if (state.nodes[x].parent === "NIL") state.rootId = y;
+    else if (x === state.nodes[state.nodes[x].parent].left) state.nodes[state.nodes[x].parent].left = y;
+    else state.nodes[state.nodes[x].parent].right = y;
+    state.nodes[y].left = x;
+    state.nodes[x].parent = y;
+  };
+
+  const rightRotate = (x) => {
+    let y = state.nodes[x].left;
+    state.nodes[x].left = state.nodes[y].right;
+    if (state.nodes[y].right !== "NIL") state.nodes[state.nodes[y].right].parent = x;
+    state.nodes[y].parent = state.nodes[x].parent;
+    if (state.nodes[x].parent === "NIL") state.rootId = y;
+    else if (x === state.nodes[state.nodes[x].parent].right) state.nodes[state.nodes[x].parent].right = y;
+    else state.nodes[state.nodes[x].parent].left = y;
+    state.nodes[y].right = x;
+    state.nodes[x].parent = y;
+  };
+  
   let treeVals = values.slice(0, values.length - 1);
   let deleteVal = values[values.length - 1];
   treeVals.forEach(rbtInsertSilent);
@@ -505,12 +551,119 @@ function* rbtDeleteSteps(values) {
     return;
   }
   
-  yield { ...deepClone(state), pointers: { z }, explanation: `Knoten ${deleteVal} wird gelöscht. Wenn gelöschter Knoten schwarz war, folgt RB-Delete-Fixup.` };
+  yield { ...deepClone(state), pointers: { z }, explanation: `Knoten ${deleteVal} gefunden. Beginne Löschvorgang.` };
   
-  // Zeige nur den ersten Schritt an (der Rest ist zu lang für eine einzelne Generator-Funktion hier, wir simulieren das Löschen visuell)
-  delete state.nodes[z]; // Simples Löschen für die visuelle Demo, in echt muss RB-Delete mit Transplant und Fixup (4 Fälle) implementiert werden.
-  // Das vollständige RBT Delete würde ~150 Zeilen Code allein für das Fixup beanspruchen.
-  yield { ...deepClone(state), pointers: {}, explanation: `Knoten ${deleteVal} gelöscht (Vereinfachte Darstellung für SPA).` };
+  let y = z;
+  let yOriginalColor = state.nodes[y].color;
+  let x;
+  
+  if (state.nodes[z].left === "NIL") {
+    x = state.nodes[z].right;
+    transplant(z, state.nodes[z].right);
+    yield { ...deepClone(state), pointers: { z }, explanation: `Knoten hat kein linkes Kind. Transplantiere rechtes Kind.` };
+  } else if (state.nodes[z].right === "NIL") {
+    x = state.nodes[z].left;
+    transplant(z, state.nodes[z].left);
+    yield { ...deepClone(state), pointers: { z }, explanation: `Knoten hat kein rechtes Kind. Transplantiere linkes Kind.` };
+  } else {
+    y = treeMinimum(state.nodes[z].right);
+    yOriginalColor = state.nodes[y].color;
+    x = state.nodes[y].right;
+    
+    yield { ...deepClone(state), pointers: { y }, explanation: `Knoten hat zwei Kinder. Finde Nachfolger (Minimum im rechten Teilbaum).` };
+    
+    if (state.nodes[y].parent === z) {
+      if (x !== "NIL") state.nodes[x].parent = y;
+    } else {
+      transplant(y, state.nodes[y].right);
+      state.nodes[y].right = state.nodes[z].right;
+      state.nodes[state.nodes[y].right].parent = y;
+    }
+    transplant(z, y);
+    state.nodes[y].left = state.nodes[z].left;
+    state.nodes[state.nodes[y].left].parent = y;
+    state.nodes[y].color = state.nodes[z].color;
+    yield { ...deepClone(state), pointers: { y }, explanation: `Transplantiere Nachfolger an die Stelle des zu löschenden Knotens.` };
+  }
+  
+  delete state.nodes[z]; // Physically remove the node
+  
+  if (yOriginalColor === "black") {
+    yield { ...deepClone(state), pointers: { x: (x !== "NIL" ? x : undefined) }, explanation: `Die gelöschte Originalfarbe war schwarz. RB-Delete-Fixup startet.` };
+    
+    // RB-Delete-Fixup
+    while (x !== "NIL" && x !== state.rootId && state.nodes[x].color === "black") {
+      if (x === state.nodes[state.nodes[x].parent].left) {
+        let w = state.nodes[state.nodes[x].parent].right;
+        if (w !== "NIL" && state.nodes[w].color === "red") {
+          // Fall 1
+          state.nodes[w].color = "black";
+          state.nodes[state.nodes[x].parent].color = "red";
+          leftRotate(state.nodes[x].parent);
+          w = state.nodes[state.nodes[x].parent].right;
+          yield { ...deepClone(state), explanation: `Fixup Fall 1: Bruder ist rot. Rotiere nach links.` };
+        }
+        if (w !== "NIL" && (state.nodes[w].left === "NIL" || state.nodes[state.nodes[w].left].color === "black") && (state.nodes[w].right === "NIL" || state.nodes[state.nodes[w].right].color === "black")) {
+          // Fall 2
+          state.nodes[w].color = "red";
+          x = state.nodes[x].parent;
+          yield { ...deepClone(state), explanation: `Fixup Fall 2: Bruder ist schwarz und hat schwarze Kinder.` };
+        } else {
+          if (w !== "NIL" && (state.nodes[w].right === "NIL" || state.nodes[state.nodes[w].right].color === "black")) {
+            // Fall 3
+            if (state.nodes[w].left !== "NIL") state.nodes[state.nodes[w].left].color = "black";
+            state.nodes[w].color = "red";
+            rightRotate(w);
+            w = state.nodes[state.nodes[x].parent].right;
+            yield { ...deepClone(state), explanation: `Fixup Fall 3: Bruder schwarz, linkes Kind rot, rechtes Kind schwarz.` };
+          }
+          // Fall 4
+          if (w !== "NIL") {
+            state.nodes[w].color = state.nodes[state.nodes[x].parent].color;
+            if (state.nodes[w].right !== "NIL") state.nodes[state.nodes[w].right].color = "black";
+          }
+          state.nodes[state.nodes[x].parent].color = "black";
+          leftRotate(state.nodes[x].parent);
+          x = state.rootId;
+          yield { ...deepClone(state), explanation: `Fixup Fall 4: Bruder schwarz, rechtes Kind rot. Rotiere nach links.` };
+        }
+      } else {
+        // Symmetrical cases
+        let w = state.nodes[state.nodes[x].parent].left;
+        if (w !== "NIL" && state.nodes[w].color === "red") {
+          state.nodes[w].color = "black";
+          state.nodes[state.nodes[x].parent].color = "red";
+          rightRotate(state.nodes[x].parent);
+          w = state.nodes[state.nodes[x].parent].left;
+          yield { ...deepClone(state), explanation: `Fixup Fall 1 (sym): Bruder ist rot. Rotiere nach rechts.` };
+        }
+        if (w !== "NIL" && (state.nodes[w].right === "NIL" || state.nodes[state.nodes[w].right].color === "black") && (state.nodes[w].left === "NIL" || state.nodes[state.nodes[w].left].color === "black")) {
+          state.nodes[w].color = "red";
+          x = state.nodes[x].parent;
+          yield { ...deepClone(state), explanation: `Fixup Fall 2 (sym): Bruder ist schwarz und hat schwarze Kinder.` };
+        } else {
+          if (w !== "NIL" && (state.nodes[w].left === "NIL" || state.nodes[state.nodes[w].left].color === "black")) {
+            if (state.nodes[w].right !== "NIL") state.nodes[state.nodes[w].right].color = "black";
+            state.nodes[w].color = "red";
+            leftRotate(w);
+            w = state.nodes[state.nodes[x].parent].left;
+            yield { ...deepClone(state), explanation: `Fixup Fall 3 (sym): Bruder schwarz, rechtes Kind rot, linkes Kind schwarz.` };
+          }
+          if (w !== "NIL") {
+            state.nodes[w].color = state.nodes[state.nodes[x].parent].color;
+            if (state.nodes[w].left !== "NIL") state.nodes[state.nodes[w].left].color = "black";
+          }
+          state.nodes[state.nodes[x].parent].color = "black";
+          rightRotate(state.nodes[x].parent);
+          x = state.rootId;
+          yield { ...deepClone(state), explanation: `Fixup Fall 4 (sym): Bruder schwarz, linkes Kind rot. Rotiere nach rechts.` };
+        }
+      }
+    }
+    if (x !== "NIL") state.nodes[x].color = "black";
+  }
+  
+  yield { ...deepClone(state), pointers: {}, explanation: `Knoten ${deleteVal} erfolgreich aus dem Rot-Schwarz-Baum entfernt.` };
 }
 
 
@@ -833,57 +986,55 @@ function* mergeSortSteps(arr) {
 }
 
 // --- HEAP SORT ---
-function* heapSortSteps(arr) {
+function* heapSortSteps(arr, config = { heapType: 'max' }) {
   let array = [...arr];
   let n = array.length;
   let colors = {};
+  const isMax = config.heapType === 'max';
 
   function* heapify(N, i) {
-    let largest = i;
+    let best = i;
     let l = 2 * i + 1;
     let r = 2 * i + 2;
 
     yield {
       array: [...array], pointers: { i, l, r }, colors: { ...colors, [i]: 'bg-blue-300' },
-      explanation: `Heapify an Knoten ${i} (${array[i]}). Vergleiche mit Kindern.`
+      explanation: `${isMax ? 'Max' : 'Min'}-Heapify an Knoten ${i} (${array[i].val !== undefined ? array[i].val : array[i]}). Vergleiche mit Kindern.`
     };
 
-    if (l < N && array[l] > array[largest]) largest = l;
-    if (r < N && array[r] > array[largest]) largest = r;
+    if (isMax) {
+      if (l < N && (array[l].val !== undefined ? array[l].val : array[l]) > (array[best].val !== undefined ? array[best].val : array[best])) best = l;
+      if (r < N && (array[r].val !== undefined ? array[r].val : array[r]) > (array[best].val !== undefined ? array[best].val : array[best])) best = r;
+    } else {
+      if (l < N && (array[l].val !== undefined ? array[l].val : array[l]) < (array[best].val !== undefined ? array[best].val : array[best])) best = l;
+      if (r < N && (array[r].val !== undefined ? array[r].val : array[r]) < (array[best].val !== undefined ? array[best].val : array[best])) best = r;
+    }
 
-    if (largest !== i) {
-      let swap = array[i]; array[i] = array[largest]; array[largest] = swap;
+    if (best !== i) {
+      let swap = array[i]; array[i] = array[best]; array[best] = swap;
       yield {
-        array: [...array], pointers: { i, largest }, colors: { ...colors, [i]: 'bg-red-400', [largest]: 'bg-red-400' },
-        explanation: `Tausche mit größerem Kind ${array[i]}.`
+        array: [...array], pointers: { i, best }, colors: { ...colors, [i]: 'bg-red-400', [best]: 'bg-red-400' },
+        explanation: `Tausche Knoten ${i} mit Kind ${best}.`
       };
-      yield* heapify(N, largest);
+      yield* heapify(N, best);
     }
   }
 
-  yield { array: [...array], pointers: {}, colors: {}, explanation: `Baue Max-Heap.` };
+  yield { array: [...array], pointers: {}, colors: {}, explanation: `Starte Heap Sort (${isMax ? 'Max' : 'Min'}-Heap). Baue Heap auf.` };
+  
   for (let i = Math.floor(n / 2) - 1; i >= 0; i--) {
     yield* heapify(n, i);
   }
-  
-  yield {
-    array: [...array], pointers: {}, colors: {},
-    explanation: `Max-Heap aufgebaut!`,
-    isQuizPoint: true,
-    quiz: {
-      type: "MULTIPLE_CHOICE", question: `Wo befindet sich nun das absolut größte Element des Arrays?`,
-      options: ["Ganz links (Index 0)", "Ganz rechts (Index N-1)", "In der Mitte"],
-      correctAnswer: "Ganz links (Index 0)", explanation: "Bei einem Max-Heap steht das Maximum immer in der Wurzel (Index 0)."
-    }
-  };
+
+  yield { array: [...array], pointers: {}, colors: {}, explanation: `${isMax ? 'Max' : 'Min'}-Heap vollständig aufgebaut.` };
 
   for (let i = n - 1; i > 0; i--) {
     let temp = array[0]; array[0] = array[i]; array[i] = temp;
     colors[i] = 'bg-green-400 text-white';
     
     yield {
-      array: [...array], pointers: { 'max': i, root: 0 }, colors: { ...colors, [i]: 'bg-green-400 text-white' },
-      explanation: `Tausche Wurzel (Max) ans Ende des unsortierten Bereichs.`
+      array: [...array], pointers: { 0: 'root', [i]: 'end' }, colors: { ...colors, 0: 'bg-red-400', [i]: 'bg-green-400 text-white' },
+      explanation: `Tausche Wurzel ans Ende des unsortierten Bereichs.`
     };
     yield* heapify(i, 0);
   }
@@ -891,7 +1042,7 @@ function* heapSortSteps(arr) {
   yield { array: [...array], pointers: {}, colors, explanation: "HeapSort abgeschlossen." };
 }
 
-// --- BOGO SORT ---
+// --- BOGO SORT (Joke) ---
 function* bogoSortSteps(arr) {
   let array = [...arr];
   let n = array.length;
@@ -899,20 +1050,22 @@ function* bogoSortSteps(arr) {
   
   const isSorted = (a) => {
     for (let i = 1; i < a.length; i++) {
-      if (a[i-1] > a[i]) return false;
+      if (a[i-1].val > a[i].val) return false;
     }
     return true;
   };
   
   let attempts = 0;
-  while (!isSorted(array) && attempts < 15) { // Cap at 15 to prevent infinite loop visually
+  while (!isSorted(array) && attempts < 15) { 
     for (let i = array.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [array[i], array[j]] = [array[j], array[i]];
     }
     attempts++;
+    let r1 = Math.floor(Math.random() * n);
+    let r2 = Math.floor(Math.random() * n);
     yield {
-      array: [...array], pointers: {}, colors: {},
+      array: [...array], pointers: { '???': r1, 'WTF': r2 }, colors: {},
       explanation: `BogoSort Versuch ${attempts}: Zufällig gemischt. ${isSorted(array) ? "Es ist sortiert!!" : "Immer noch falsch."}`
     };
   }
@@ -921,7 +1074,7 @@ function* bogoSortSteps(arr) {
     for(let k=0; k<n; k++) colors[k] = 'bg-green-400 text-white';
     yield { array: [...array], pointers: {}, colors, explanation: "Unglaublich! BogoSort hat das Array sortiert." };
   } else {
-    yield { array: [...array], pointers: {}, colors: {}, explanation: "BogoSort wurde nach 15 Versuchen abgebrochen (sonst läuft es ewig)." };
+    yield { array: [...array], pointers: { 'aufgegeben': 0 }, colors: {}, explanation: "BogoSort wurde nach 15 Versuchen abgebrochen (sonst läuft es ewig)." };
   }
 }
 
@@ -1039,13 +1192,13 @@ function* spaghettiSortSteps(arr) {
     for (let i = 0; i < array.length; i++) {
       if (array[i] === len) {
         if (!found) {
-          yield { array: [...array], pointers: {}, colors: { ...colors }, explanation: `Senke die flache Hand von oben herab. Wir treffen Spaghetti der Länge ${len}.` };
+          yield { array: [...array], pointers: { 'Hand': i }, colors: { ...colors }, explanation: `Senke die flache Hand von oben herab. Wir treffen Spaghetti der Länge ${len}.` };
           found = true;
         }
         sorted.push(len);
         colors[i] = 'bg-gray-300 opacity-50'; // Spaghetti removed
         
-        yield { array: [...array], pointers: { [i]: 'greife' }, colors: { ...colors }, explanation: `Greife Spaghetti der Länge ${len} und lege sie ab.` };
+        yield { array: [...array], pointers: { 'greife': i }, colors: { ...colors }, explanation: `Greife Spaghetti der Länge ${len} und lege sie ab.` };
       }
     }
   }
@@ -1058,10 +1211,142 @@ function* spaghettiSortSteps(arr) {
   
   yield { array: [...array], pointers: {}, colors: finalColors, explanation: "SpaghettiSort: Fertig! (Bitte nicht im produktiven Code verwenden)." };
 }
+// --- STALIN SORT (Joke) ---
+function* stalinSortSteps(arr) {
+  let array = [...arr];
+  let maxSoFar = array[0];
+  let i = 1;
+  let colors = {};
+  
+  yield { array: [...array], pointers: { 'max': 0 }, colors: {}, explanation: "Stalin Sort: Iteriere durch die Genossen (Elemente)." };
+  
+  while(i < array.length) {
+    yield { array: [...array], pointers: { 'prüfe': i }, colors: { ...colors, [i]: "bg-yellow-400" }, explanation: `Prüfe, ob ${array[i].val} >= ${maxSoFar.val} ist.` };
+    
+    if (array[i].val >= maxSoFar.val) {
+      maxSoFar = array[i];
+      colors[i] = "bg-green-500 text-white";
+      yield { array: [...array], pointers: { 'max': i }, colors: { ...colors }, explanation: `${array[i].val} ist gehorsam. Darf bleiben.` };
+      i++;
+    } else {
+      colors[i] = "bg-red-500 text-white";
+      yield { array: [...array], pointers: { '!': i }, colors: { ...colors }, explanation: `${array[i].val} tanzt aus der Reihe! Wird in den Gulag geschickt (eliminiert).` };
+      array.splice(i, 1);
+      // Do not increment i, as elements shift left
+    }
+  }
+  
+  for(let k=0; k<array.length; k++) colors[k] = 'bg-green-500 text-white';
+  yield { array: [...array], pointers: {}, colors, explanation: "Stalin Sort abgeschlossen. Alle verbleibenden Genossen sind geordnet." };
+}
 
-const generateAlgorithmHistory = (algoGenerator, arr) => {
+// --- THANOS SORT (Joke) ---
+function* thanosSortSteps(arr) {
+  let array = [...arr];
+  
+  const isSorted = (a) => {
+    for (let i = 0; i < a.length - 1; i++) {
+      if (a[i].val > a[i+1].val) return false;
+    }
+    return true;
+  };
+  
+  while (array.length > 1 && !isSorted(array)) {
+    yield { array: [...array], pointers: { 'snap? ': 0, ' snap?': array.length-1 }, colors: {}, explanation: "Das Universum (Array) ist nicht im Gleichgewicht (unsortiert)." };
+    
+    let survivors = [];
+    let indices = array.map((_, i) => i);
+    indices.sort(() => Math.random() - 0.5);
+    let half = Math.ceil(array.length / 2);
+    let survivorIndices = new Set(indices.slice(0, half));
+    
+    let colors = {};
+    let pointers = {};
+    for (let i = 0; i < array.length; i++) {
+      if (survivorIndices.has(i)) {
+        survivors.push(array[i]);
+        colors[i] = "bg-green-500 text-white"; // survive
+        pointers['alive_' + i] = i;
+      } else {
+        colors[i] = "bg-slate-700 text-white opacity-20"; // dust
+        pointers['dust_' + i] = i;
+      }
+    }
+    
+    yield { array: [...array], pointers, colors, explanation: "Schnipp! Die Hälfte der Elemente wird zufällig ausgelöscht." };
+    
+    array = survivors;
+    if (array.length === 1) {
+      yield { array: [...array], pointers: {}, colors: { 0: "bg-green-500 text-white" }, explanation: "Nur ein Element übrig. Perfekt im Gleichgewicht." };
+    }
+  }
+  
+  let finalColors = {};
+  for(let k=0; k<array.length; k++) finalColors[k] = 'bg-purple-600 text-white font-bold shadow-[0_0_15px_rgba(168,85,247,0.8)]'; // Thanos purple glow
+  yield { array: [...array], pointers: {}, colors: finalColors, explanation: "Das Universum ist im perfekten Gleichgewicht. (Thanos Sort abgeschlossen)" };
+}
+// --- COMMUNISM SORT (Joke) ---
+function* communismSortSteps(arr) {
+  let array = [...arr];
+  yield { array: [...array], pointers: {}, colors: {}, explanation: "Communism Sort: Alle Elemente sind Genossen und sollen gleich sein." };
+  
+  let sum = 0;
+  let colors = {};
+  for (let i = 0; i < array.length; i++) {
+    sum += array[i].val;
+    colors[i] = "bg-red-500 text-white";
+    yield { array: [...array], pointers: { 'sammle': i }, colors: { ...colors }, explanation: `Sammle den Reichtum von Genosse ${i} ein.` };
+  }
+  
+  let average = Math.floor(sum / array.length);
+  yield { array: [...array], pointers: {}, colors, explanation: `Der gesamte Reichtum ist ${sum}. Umverteilung: Jeder erhält exakt ${average}.` };
+  
+  for (let i = 0; i < array.length; i++) {
+    array[i] = { id: array[i].id, val: average, valueOf() { return this.val; }, toString() { return this.val.toString(); } };
+    colors[i] = "bg-green-600 text-white";
+    yield { array: [...array], pointers: { 'verteile': i }, colors: { ...colors }, explanation: `Genosse ${i} erhält seinen fairen Anteil: ${average}.` };
+  }
+  
+  yield { array: [...array], pointers: {}, colors, explanation: "Communism Sort abgeschlossen. Totale Gleichheit erreicht! (Ist das sortiert? Ja, irgendwie schon)." };
+}
+
+// --- CAPITALISM SORT (Joke) ---
+function* capitalismSortSteps(arr) {
+  let array = [...arr];
+  yield { array: [...array], pointers: {}, colors: {}, explanation: "Capitalism Sort: Jeder beutet seinen Vorgänger aus und klaut 80% seines Reichtums." };
+  
+  let colors = {};
+  for(let i = 1; i < array.length; i++) {
+    let prev = array[i-1];
+    let curr = array[i];
+    
+    let stolen = Math.floor(prev.val * 0.8);
+    
+    array[i-1] = { id: prev.id, val: prev.val - stolen, valueOf() { return this.val; }, toString() { return this.val.toString(); } };
+    array[i] = { id: curr.id, val: curr.val + stolen, valueOf() { return this.val; }, toString() { return this.val.toString(); } };
+    
+    colors[i-1] = "bg-red-500 text-white";
+    colors[i] = "bg-emerald-500 text-white font-bold";
+    
+    yield { 
+      array: [...array], 
+      pointers: { 'Opfer': i-1, 'Kapitalist': i }, 
+      colors: { ...colors }, 
+      explanation: `Element ${i} klaut 80% (${stolen}) vom Vorgänger ${i-1}.` 
+    };
+    
+    colors[i-1] = "bg-slate-300 dark:bg-slate-800 text-slate-500"; 
+    colors[i] = "bg-emerald-600 text-white font-bold shadow-[0_0_15px_rgba(16,185,129,0.5)]"; 
+  }
+  
+  let maxVal = Math.max(...array.map(a => a.val));
+  let maxIdx = array.findIndex(a => a.val === maxVal);
+  yield { array: [...array], pointers: { 'CEO (Reichster)': maxIdx }, colors, explanation: "Capitalism Sort abgeschlossen. Die Schere zwischen Arm und Reich wurde erfolgreich maximiert!" };
+}
+
+const generateAlgorithmHistory = (algoGenerator, arr, config = {}) => {
   const history = [];
-  const gen = algoGenerator(arr);
+  const gen = algoGenerator(arr, config);
   let result = gen.next();
   while (!result.done) {
     history.push(result.value);
@@ -1069,6 +1354,321 @@ const generateAlgorithmHistory = (algoGenerator, arr) => {
   }
   return history;
 };
+
+
+// --- FILE: graph_algos.js ---
+// graph_algos.js
+
+function getAdjacencyList(nodes, edges) {
+  const adj = {};
+  nodes.forEach(n => adj[n] = []);
+  edges.forEach(e => {
+    adj[e.u].push({ node: e.v, weight: e.weight });
+    adj[e.v].push({ node: e.u, weight: e.weight }); // Undirected graph
+  });
+  return adj;
+}
+
+// --- DFS (Tiefensuche) ---
+function* dfsSteps(graph) {
+  const { nodes, edges } = graph;
+  const adj = getAdjacencyList(nodes, edges);
+  const visited = new Set();
+  const nodeColors = {};
+  const edgeColors = {};
+  
+  if (nodes.length === 0) return;
+  
+  function* dfs(u, parentEdgeId) {
+    visited.add(u);
+    nodeColors[u] = 'bg-blue-500 text-white';
+    if (parentEdgeId) edgeColors[parentEdgeId] = '#3b82f6'; // blue-500
+    
+    yield {
+      graph, nodeColors: { ...nodeColors }, edgeColors: { ...edgeColors },
+      explanation: `Besuche Knoten ${u}.`
+    };
+    
+    // Sort neighbors alphabetically for consistent visualization
+    const neighbors = adj[u].sort((a, b) => a.node.localeCompare(b.node));
+    
+    for (let neighbor of neighbors) {
+      const v = neighbor.node;
+      const edgeId = [u, v].sort().join('-');
+      
+      if (!visited.has(v)) {
+        yield {
+          graph, nodeColors: { ...nodeColors }, edgeColors: { ...edgeColors, [edgeId]: '#f59e0b' }, // amber
+          explanation: `Betrachte Nachbar ${v} von ${u}.`
+        };
+        yield* dfs(v, edgeId);
+      } else if (edgeColors[edgeId] !== '#3b82f6') {
+        edgeColors[edgeId] = '#94a3b8'; // mark as back-edge/visited already
+      }
+    }
+    
+    nodeColors[u] = 'bg-slate-700 text-white'; // Fully explored
+    yield {
+      graph, nodeColors: { ...nodeColors }, edgeColors: { ...edgeColors },
+      explanation: `Knoten ${u} vollständig exploriert.`
+    };
+  }
+
+  yield* dfs(nodes[0], null);
+  yield { graph, nodeColors: { ...nodeColors }, edgeColors: { ...edgeColors }, explanation: "DFS abgeschlossen." };
+}
+
+// --- BFS (Breitensuche) ---
+function* bfsSteps(graph) {
+  const { nodes, edges } = graph;
+  const adj = getAdjacencyList(nodes, edges);
+  const visited = new Set();
+  const nodeColors = {};
+  const edgeColors = {};
+  
+  if (nodes.length === 0) return;
+  
+  const queue = [nodes[0]];
+  visited.add(nodes[0]);
+  nodeColors[nodes[0]] = 'bg-blue-500 text-white';
+  
+  yield {
+    graph, nodeColors: { ...nodeColors }, edgeColors: { ...edgeColors },
+    explanation: `Startknoten ${nodes[0]} zur Queue hinzugefügt.`
+  };
+  
+  while (queue.length > 0) {
+    const u = queue.shift();
+    nodeColors[u] = 'bg-green-500 text-white'; // currently exploring
+    
+    yield {
+      graph, nodeColors: { ...nodeColors }, edgeColors: { ...edgeColors },
+      explanation: `Entnehme ${u} aus der Queue und exploriere Nachbarn.`
+    };
+    
+    const neighbors = adj[u].sort((a, b) => a.node.localeCompare(b.node));
+    for (let neighbor of neighbors) {
+      const v = neighbor.node;
+      const edgeId = [u, v].sort().join('-');
+      
+      if (!visited.has(v)) {
+        visited.add(v);
+        queue.push(v);
+        nodeColors[v] = 'bg-blue-300 text-white'; // discovered, in queue
+        edgeColors[edgeId] = '#3b82f6'; // tree edge
+        
+        yield {
+          graph, nodeColors: { ...nodeColors }, edgeColors: { ...edgeColors },
+          explanation: `Nachbar ${v} entdeckt (über Kante ${edgeId}). Füge zur Queue hinzu.`
+        };
+      }
+    }
+    nodeColors[u] = 'bg-slate-700 text-white'; // Fully explored
+  }
+  
+  yield { graph, nodeColors: { ...nodeColors }, edgeColors: { ...edgeColors }, explanation: "BFS abgeschlossen." };
+}
+
+// --- KRUSKAL (MST) ---
+function* kruskalSteps(graph) {
+  const { nodes, edges } = graph;
+  const nodeColors = {};
+  const edgeColors = {};
+  
+  // Sort edges by weight
+  const sortedEdges = [...edges].sort((a, b) => a.weight - b.weight);
+  
+  // Union-Find
+  const parent = {};
+  nodes.forEach(n => parent[n] = n);
+  const find = (i) => {
+    if (parent[i] === i) return i;
+    return parent[i] = find(parent[i]);
+  };
+  const union = (i, j) => {
+    const rootI = find(i);
+    const rootJ = find(j);
+    if (rootI !== rootJ) parent[rootI] = rootJ;
+  };
+  
+  yield {
+    graph, nodeColors, edgeColors,
+    explanation: "Kruskal: Sortiere alle Kanten nach Gewicht aufsteigend."
+  };
+  
+  let mstEdges = 0;
+  for (let edge of sortedEdges) {
+    const { u, v, weight } = edge;
+    const edgeId = [u, v].sort().join('-');
+    
+    yield {
+      graph, nodeColors, edgeColors: { ...edgeColors, [edgeId]: '#f59e0b' },
+      explanation: `Betrachte Kante ${u}-${v} (Gewicht ${weight}).`
+    };
+    
+    const rootU = find(u);
+    const rootV = find(v);
+    
+    if (rootU !== rootV) {
+      // Blue rule: add to MST
+      union(u, v);
+      edgeColors[edgeId] = '#3b82f6'; // Blue
+      nodeColors[u] = 'bg-blue-500 text-white';
+      nodeColors[v] = 'bg-blue-500 text-white';
+      mstEdges++;
+      
+      yield {
+        graph, nodeColors: { ...nodeColors }, edgeColors: { ...edgeColors },
+        explanation: `Blaue Regel: Kante ${u}-${v} verbindet getrennte Komponenten. Zum MST hinzugefügt!`
+      };
+      
+      if (mstEdges === nodes.length - 1) break; // MST complete
+    } else {
+      // Red rule: cycle
+      edgeColors[edgeId] = '#ef4444'; // Red
+      
+      yield {
+        graph, nodeColors: { ...nodeColors }, edgeColors: { ...edgeColors },
+        explanation: `Rote Regel: Kante ${u}-${v} bildet einen Kreis! Kante wird verworfen.`
+      };
+    }
+  }
+  
+  yield { graph, nodeColors, edgeColors, explanation: "Kruskal-Algorithmus abgeschlossen. Minimaler Spannbaum (MST) gefunden." };
+}
+
+// --- PRIM (MST) ---
+function* primSteps(graph) {
+  const { nodes, edges } = graph;
+  const adj = getAdjacencyList(nodes, edges);
+  const nodeColors = {};
+  const edgeColors = {};
+  
+  if (nodes.length === 0) return;
+  
+  const inMST = new Set();
+  const startNode = nodes[0];
+  inMST.add(startNode);
+  nodeColors[startNode] = 'bg-blue-500 text-white';
+  
+  yield {
+    graph, nodeColors: { ...nodeColors }, edgeColors,
+    explanation: `Prim: Starte mit Knoten ${startNode} in der MST-Menge (blaue Wolke).`
+  };
+  
+  while (inMST.size < nodes.length) {
+    let minEdge = null;
+    let minWeight = Infinity;
+    
+    // Find minimum weight edge connecting the "blue cloud" to a vertex outside
+    for (let u of inMST) {
+      for (let neighbor of adj[u]) {
+        const v = neighbor.node;
+        if (!inMST.has(v) && neighbor.weight < minWeight) {
+          minWeight = neighbor.weight;
+          minEdge = { u, v, weight: neighbor.weight };
+        }
+      }
+    }
+    
+    if (!minEdge) break; // Disconnected graph
+    
+    const { u, v, weight } = minEdge;
+    const edgeId = [u, v].sort().join('-');
+    
+    yield {
+      graph, nodeColors: { ...nodeColors }, edgeColors: { ...edgeColors, [edgeId]: '#f59e0b' },
+      explanation: `Wähle günstigste ausgehende Kante: ${u}-${v} (Gewicht ${weight}).`
+    };
+    
+    inMST.add(v);
+    edgeColors[edgeId] = '#3b82f6'; // Blue rule
+    nodeColors[v] = 'bg-blue-500 text-white';
+    
+    yield {
+      graph, nodeColors: { ...nodeColors }, edgeColors: { ...edgeColors },
+      explanation: `Kante ${u}-${v} hinzugefügt. Knoten ${v} ist nun Teil des MST.`
+    };
+  }
+  
+  yield { graph, nodeColors, edgeColors, explanation: "Prim-Algorithmus abgeschlossen." };
+}
+
+// --- DIJKSTRA ---
+function* dijkstraSteps(graph) {
+  const { nodes, edges } = graph;
+  const adj = getAdjacencyList(nodes, edges);
+  const nodeColors = {};
+  const edgeColors = {};
+  
+  if (nodes.length === 0) return;
+  
+  const startNode = nodes[0];
+  const dist = {};
+  const prev = {};
+  const unvisited = new Set(nodes);
+  
+  nodes.forEach(n => dist[n] = Infinity);
+  dist[startNode] = 0;
+  
+  yield {
+    graph, nodeColors, edgeColors, 
+    explanation: `Dijkstra: Starte bei Knoten ${startNode}. Initiale Distanzen: Unendlich.` 
+  };
+  
+  while (unvisited.size > 0) {
+    // Extract min
+    let u = null;
+    let minDist = Infinity;
+    for (let node of unvisited) {
+      if (dist[node] < minDist) {
+        minDist = dist[node];
+        u = node;
+      }
+    }
+    
+    if (u === null) break; // Remaining nodes are unreachable
+    
+    unvisited.delete(u);
+    nodeColors[u] = 'bg-blue-500 text-white';
+    
+    yield {
+      graph, nodeColors: { ...nodeColors }, edgeColors: { ...edgeColors },
+      explanation: `Betrachte Knoten ${u} mit aktueller Minimal-Distanz ${dist[u]}.`
+    };
+    
+    for (let neighbor of adj[u]) {
+      const v = neighbor.node;
+      const weight = neighbor.weight;
+      if (unvisited.has(v)) {
+        const edgeId = [u, v].sort().join('-');
+        
+        yield {
+          graph, nodeColors: { ...nodeColors }, edgeColors: { ...edgeColors, [edgeId]: '#f59e0b' },
+          explanation: `Prüfe Nachbar ${v} über Kante ${u}-${v} (Gewicht ${weight}).`
+        };
+        
+        const alt = dist[u] + weight;
+        if (alt < dist[v]) {
+          dist[v] = alt;
+          prev[v] = u;
+          edgeColors[edgeId] = '#10b981'; // Green for relaxation update
+          
+          yield {
+            graph, nodeColors: { ...nodeColors }, edgeColors: { ...edgeColors },
+            explanation: `Kürzere Distanz zu ${v} gefunden: ${alt}. Aktualisiere!`
+          };
+        } else {
+          edgeColors[edgeId] = '#94a3b8'; // Grey out if not shorter
+        }
+      }
+    }
+    
+    nodeColors[u] = 'bg-slate-700 text-white'; // done
+  }
+  
+  yield { graph, nodeColors, edgeColors, explanation: "Dijkstra abgeschlossen. Kürzeste Pfade gefunden." };
+}
 
 
 // --- FILE: tree_ui.js ---
@@ -1216,7 +1816,7 @@ const TreeVisualizer = ({ treeState, isRBT = false }) => {
 // --- FILE: sorting_ui.js ---
 // sorting_ui.js
 
-const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, auxPointers = {}, auxColors = {}, auxLabel = "Hilfs-Array" }) => {
+const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, auxPointers = {}, auxColors = {}, auxLabel = "Hilfs-Array", viewMode = "boxes" }) => {
   const prevPositionsRef = React.useRef({});
 
   const renderArray = (arr, pts, cls, label) => {
@@ -1224,6 +1824,13 @@ const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, a
     const BLOCK_WIDTH = 72; 
     const totalWidth = arr ? arr.length * BLOCK_WIDTH : 0;
     const seenKeys = new Set();
+    
+    // Determine max value for bars
+    let maxVal = 1;
+    if (viewMode === "bars" && arr) {
+      const vals = arr.map(v => typeof v === 'object' && v !== null ? v.val : v).filter(v => typeof v === 'number');
+      if (vals.length > 0) maxVal = Math.max(...vals, 1);
+    }
     
     // Calculate arcs synchronously during render based on previous positions
     const arcs = {};
@@ -1238,10 +1845,13 @@ const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, a
       });
     }
 
+    const containerHeight = viewMode === "bars" ? 220 : 160;
+    const itemHeightClass = viewMode === "bars" ? "h-[120px]" : "h-12 md:h-16";
+
     return (
       <div className="flex flex-col items-center justify-center w-full my-4 overflow-visible py-10">
         {label && <h4 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-6">{label}</h4>}
-        <div className="relative" style={{ width: totalWidth, height: 160 }}>
+        <div className="relative" style={{ width: totalWidth, height: containerHeight }}>
           {/* Stationary placeholders (Indices and Pointers) */}
           {arr && arr.map((_, idx) => {
             const leftPos = idx * BLOCK_WIDTH;
@@ -1254,7 +1864,7 @@ const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, a
                 style={{ left: leftPos, width: 64 }}
               >
                 {/* Empty invisible box to push the labels down exactly where they should be */}
-                <div className="w-12 h-12 md:w-16 md:h-16 flex items-center justify-center mb-0"></div>
+                <div className={`w-12 md:w-16 flex items-center justify-center mb-0 ${itemHeightClass}`}></div>
                 <div className="text-xs text-slate-400 dark:text-slate-500 mt-2 font-bold">{idx}</div>
                 
                 {/* Pointer Arrows below */}
@@ -1275,7 +1885,7 @@ const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, a
             );
           })}
 
-          {/* Moving Array Boxes using Framer Motion */}
+          {/* Moving Array Elements using Framer Motion */}
           {arr && arr.map((val, idx) => {
             const colorClass = cls[idx];
             const isCustom = !!colorClass;
@@ -1293,13 +1903,34 @@ const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, a
             const displayVal = val === null || val === undefined ? "" : String(val);
             const arcY = arcs[key] || 0;
 
+            let content;
+            if (viewMode === "bars") {
+              const numVal = typeof val === 'object' && val !== null ? val.val : val;
+              const heightPct = typeof numVal === 'number' ? Math.max((numVal / maxVal) * 100, 5) : 50;
+              content = (
+                <div className="flex flex-col justify-end items-center w-full h-[120px]">
+                  <div className="text-xs mb-1 font-bold">{displayVal}</div>
+                  <div 
+                    className={`w-10 md:w-14 rounded-t-md border border-b-0 border-slate-700/20 dark:border-slate-500/30 shadow-lg transition-all duration-300 ${bgColor}`} 
+                    style={{ height: `${heightPct}%` }}
+                  ></div>
+                </div>
+              );
+            } else {
+              content = (
+                <div className={`array-box w-12 h-12 md:w-16 md:h-16 flex items-center justify-center border-2 border-slate-700/20 dark:border-slate-500/30 font-extrabold text-lg rounded-2xl shadow-lg transition-colors duration-300 ${bgColor}`}>
+                  {displayVal}
+                </div>
+              );
+            }
+
             return (
               <window.Motion.motion.div 
                 key={key} 
                 initial={false}
                 animate={{ 
                   x: leftPos,
-                  y: arcY !== 0 ? [0, arcY, 0] : 0,
+                  y: (arcY !== 0 && viewMode === "boxes") ? [0, arcY, 0] : 0,
                   transition: { 
                     x: { duration: 0.5, ease: "easeInOut" },
                     y: { duration: 0.5, ease: "easeInOut", times: [0, 0.5, 1] }
@@ -1308,9 +1939,7 @@ const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, a
                 className="absolute top-0 flex flex-col items-center z-10"
                 style={{ left: 0, width: 64 }}
               >
-                <div className={`array-box w-12 h-12 md:w-16 md:h-16 flex items-center justify-center border-2 border-slate-700/20 dark:border-slate-500/30 font-extrabold text-lg rounded-2xl shadow-lg transition-colors duration-300 ${bgColor}`}>
-                  {displayVal}
-                </div>
+                {content}
               </window.Motion.motion.div>
             );
           })}
@@ -1348,6 +1977,109 @@ const ArrayVisualizer = ({ array, pointers = {}, colors = {}, auxArray = null, a
 
 
 
+// --- FILE: graph_ui.js ---
+// graph_ui.js
+
+const GraphVisualizer = ({ graphState }) => {
+  if (!graphState || !graphState.graph) return null;
+  
+  const { graph, nodeColors = {}, edgeColors = {} } = graphState;
+  const { nodes, edges } = graph;
+  
+  const width = 800;
+  const height = 500;
+  const cx = width / 2;
+  const cy = height / 2;
+  const radius = 180;
+  
+  // Calculate positions in a circle
+  const positions = {};
+  nodes.forEach((node, i) => {
+    const angle = (i / nodes.length) * 2 * Math.PI - Math.PI / 2; // start at top
+    positions[node] = {
+      x: cx + radius * Math.cos(angle),
+      y: cy + radius * Math.sin(angle)
+    };
+  });
+  
+  return (
+    <div className="w-full overflow-hidden bg-transparent rounded-lg relative min-h-[500px] flex items-center justify-center">
+      <svg width={width} height={height} className="max-w-full">
+        {/* Render edges */}
+        {edges.map((edge, i) => {
+          const { u, v, weight } = edge;
+          const p1 = positions[u];
+          const p2 = positions[v];
+          if (!p1 || !p2) return null;
+          
+          const edgeId = [u, v].sort().join('-');
+          const color = edgeColors[edgeId] || '#9ca3af'; // default gray-400
+          const isHighlighted = edgeColors[edgeId] && edgeColors[edgeId] !== '#9ca3af';
+          
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
+          
+          return (
+            <g key={`edge-${i}`}>
+              <line 
+                x1={p1.x} y1={p1.y} 
+                x2={p2.x} y2={p2.y} 
+                stroke={color} 
+                strokeWidth={isHighlighted ? "4" : "2"} 
+                className="transition-all duration-300"
+              />
+              <circle cx={midX} cy={midY} r="12" fill="white" className="dark:fill-slate-800" />
+              <text 
+                x={midX} y={midY + 4} 
+                textAnchor="middle" 
+                fontSize="12" 
+                fontWeight="bold" 
+                fill={isHighlighted ? color : '#6b7280'}
+              >
+                {weight}
+              </text>
+            </g>
+          );
+        })}
+        
+        {/* Render nodes */}
+        {nodes.map(node => {
+          const pos = positions[node];
+          if (!pos) return null;
+          
+          const nClass = nodeColors[node] || 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white';
+          const isDark = nClass.includes('text-white');
+          
+          // Basic tailwind color parsing for SVG fill
+          let fill = '#ffffff';
+          if (nClass.includes('bg-blue-500')) fill = '#3b82f6';
+          else if (nClass.includes('bg-green-500')) fill = '#22c55e';
+          else if (nClass.includes('bg-blue-300')) fill = '#93c5fd';
+          else if (nClass.includes('bg-slate-700')) fill = '#334155';
+          else if (nClass.includes('bg-slate-700')) fill = '#334155';
+          else if (nClass.includes('dark:bg-slate-700')) fill = '#334155'; // rough fallback
+          
+          return (
+            <g key={`node-${node}`} transform={`translate(${pos.x}, ${pos.y})`} className="transition-all duration-300">
+              <circle r="22" fill={fill} stroke={isDark ? '#fff' : '#9ca3af'} strokeWidth="2" />
+              <text 
+                textAnchor="middle" 
+                y="5" 
+                fill={isDark ? '#fff' : '#1f2937'} 
+                fontWeight="bold"
+                fontSize="16"
+              >
+                {node}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+};
+
+
 // --- FILE: app.js ---
 // app.js
 
@@ -1371,10 +2103,21 @@ const ALGORITHMS = {
   "bst_delete": { name: "BST Delete", category: "Bäume", type: "tree", complexity: "O(log n)", gen: bstDeleteSteps },
   "rbt_insert": { name: "RBT Insert & Fixup", category: "Bäume", type: "tree", complexity: "O(log n)", gen: rbtInsertSteps },
   "rbt_delete": { name: "RBT Delete", category: "Bäume", type: "tree", complexity: "O(log n)", gen: rbtDeleteSteps },
+
+  // Graphen
+  "dfs": { name: "Tiefensuche (DFS)", category: "Graphen", type: "graph", complexity: "O(V+E)", gen: dfsSteps },
+  "bfs": { name: "Breitensuche (BFS)", category: "Graphen", type: "graph", complexity: "O(V+E)", gen: bfsSteps },
+  "kruskal": { name: "Kruskal (MST)", category: "Graphen", type: "graph", complexity: "O(E log E)", gen: kruskalSteps },
+  "prim": { name: "Prim (MST)", category: "Graphen", type: "graph", complexity: "O(E log V)", gen: primSteps },
+  "dijkstra": { name: "Dijkstra (Shortest Path)", category: "Graphen", type: "graph", complexity: "O(V log V + E)", gen: dijkstraSteps },
   
   // Easter Eggs
   "bogo": { name: "BogoSort", category: "Easter Eggs", type: "array", complexity: "O(n!)", gen: bogoSortSteps },
-  "spaghetti": { name: "SpaghettiSort", category: "Easter Eggs", type: "array", complexity: "O(n)", gen: spaghettiSortSteps }
+  "spaghetti": { name: "SpaghettiSort", category: "Easter Eggs", type: "array", complexity: "O(n)", gen: spaghettiSortSteps },
+  "stalin": { name: "StalinSort", category: "Easter Eggs", type: "array", complexity: "O(n)", gen: stalinSortSteps },
+  "thanos": { name: "ThanosSort", category: "Easter Eggs", type: "array", complexity: "O(n) / O(∞)", gen: thanosSortSteps },
+  "communism": { name: "CommunismSort", category: "Easter Eggs", type: "array", complexity: "O(n)", gen: communismSortSteps },
+  "capitalism": { name: "CapitalismSort", category: "Easter Eggs", type: "array", complexity: "O(n)", gen: capitalismSortSteps }
 };
 
 const ComplexityChart = ({ currentComplexity }) => {
@@ -1398,7 +2141,7 @@ const ComplexityChart = ({ currentComplexity }) => {
       let path = `M ${padding} ${height - padding}`;
       for (let x = 1; x <= 10; x++) {
         let yVal = fn(x);
-        let scaledY = Math.min(height - padding, (yVal / 20) * (height - 2*padding));
+        let scaledY = (yVal / 20) * (height - 2*padding);
         let px = padding + (x / 10) * (width - 2*padding);
         let py = height - padding - scaledY;
         path += ` L ${px} ${py}`;
@@ -1410,13 +2153,17 @@ const ComplexityChart = ({ currentComplexity }) => {
       const fontSize = isLarge ? "14" : "10";
       const showLabel = isCurrent || (isLarge && toggledCurves[label]);
       
+      // Calculate label position (clamp to top of chart to remain visible)
+      let labelY = height - padding - (fn(10)/20 * (height - 2*padding));
+      if (labelY < padding) labelY = padding + 10;
+      
       return (
         <g key={label} opacity={opacity}>
           <path d={path} fill="none" stroke={color} strokeWidth={strokeWidth} />
           {showLabel && (
             <text 
               x={width - padding + 5} 
-              y={height - padding - (fn(10)/20 * (height - 2*padding))} 
+              y={labelY} 
               fill={color} 
               fontSize={fontSize} 
               fontWeight="bold"
@@ -1439,7 +2186,7 @@ const ComplexityChart = ({ currentComplexity }) => {
     ];
 
     return (
-      <svg width="100%" height={height} viewBox={`0 0 ${width + 80} ${height}`}>
+      <svg width="100%" height={height} viewBox={`0 0 ${width + 80} ${height}`} style={{ overflow: "hidden" }}>
         <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="#94a3b8" strokeWidth="2" />
         <line x1={padding} y1={height - padding} x2={width} y2={height - padding} stroke="#94a3b8" strokeWidth="2" />
         <text x={padding - (isLarge ? 20 : 10)} y={padding} fill="#94a3b8" fontSize={isLarge ? "16" : "10"}>t</text>
@@ -1537,53 +2284,125 @@ const App = () => {
   }, [isDarkMode]);
   
   const timerRef = useRef(null);
+  const [graphInput, setGraphInput] = useState("A-B:4, A-C:2, B-C:1, B-D:5, C-D:8, C-E:10, D-E:2, D-F:6, E-F:3");
+  const [searchTarget, setSearchTarget] = useState("30");
+  const [viewMode, setViewMode] = useState("boxes"); // "boxes" or "bars"
+  const [heapType, setHeapType] = useState("max"); // "max" or "min"
 
   const startSimulation = useCallback(() => {
-    let rawValues = inputValues.split(",").map(s => parseInt(s.trim())).filter(n => !isNaN(n));
-    if (rawValues.length > 15) rawValues = rawValues.slice(0, 15);
-    if (rawValues.length === 0) rawValues = generateRandomArray(8);
-    
-    // Wrap primitives in stable objects for animation tracking
-    class StableElement {
-      constructor(id, val) {
-        this.id = id;
-        this.val = val;
+    const algoDef = ALGORITHMS[selectedAlgo];
+    let values;
+
+    if (algoDef.type === "graph") {
+      // Parse simple graph input: "A-B:4, B-C:2"
+      const edges = [];
+      const nodes = new Set();
+      graphInput.split(',').forEach(pair => {
+        const parts = pair.trim().split(':');
+        const weight = parts.length > 1 ? parseInt(parts[1]) : 1;
+        const nodesStr = parts[0].split('-');
+        if (nodesStr.length === 2) {
+          nodes.add(nodesStr[0].trim());
+          nodes.add(nodesStr[1].trim());
+          edges.push({ u: nodesStr[0].trim(), v: nodesStr[1].trim(), weight: isNaN(weight) ? 1 : weight });
+        }
+      });
+      values = { nodes: Array.from(nodes), edges };
+    } else {
+      let rawValues = inputValues.split(",").map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+      if (rawValues.length > 15) rawValues = rawValues.slice(0, 15);
+      if (rawValues.length === 0) rawValues = generateRandomArray(8);
+      
+      if (algoDef.name.includes("Search") || algoDef.name.includes("Suche")) {
+        const sVal = parseInt(searchTarget.trim());
+        rawValues.push(isNaN(sVal) ? rawValues[Math.floor(rawValues.length/2)] : sVal);
       }
-      valueOf() { return this.val; }
-      toString() { return this.val.toString(); }
+      
+      class StableElement {
+        constructor(id, val) {
+          this.id = id;
+          this.val = val;
+        }
+        valueOf() { return this.val; }
+        toString() { return this.val.toString(); }
+      }
+      
+      values = algoDef.type === "array" ? rawValues.map((v, i) => new StableElement(`el-${i}-${v}`, v)) : rawValues;
     }
     
-    const algoDef = ALGORITHMS[selectedAlgo];
-    const values = algoDef.type === "array" ? rawValues.map((v, i) => new StableElement(`el-${i}-${v}`, v)) : rawValues;
-    
-    const newHistory = generateAlgorithmHistory(algoDef.gen, values);
-    setHistory(newHistory);
+    const genResult = typeof algoDef.gen === "function" 
+        ? generateAlgorithmHistory(algoDef.gen, values, { heapType })
+        : [];
+      
+    setHistory(genResult);
     setStepIndex(0);
     setIsPlaying(false);
-  }, [inputValues, selectedAlgo]);
+  }, [inputValues, graphInput, searchTarget, selectedAlgo, heapType]);
 
   useEffect(() => { startSimulation(); }, [startSimulation]);
+
+  const generateHeapTreeState = (step) => {
+    if (!step || !step.array) return null;
+    const array = step.array;
+    const n = array.length;
+    if (n === 0) return null;
+    
+    const nodes = {};
+    for (let i = 0; i < n; i++) {
+      const el = array[i];
+      const val = typeof el === 'object' && el !== null ? el.val : el;
+      const id = String(i);
+      nodes[id] = { val };
+      if (2 * i + 1 < n) nodes[id].left = String(2 * i + 1);
+      if (2 * i + 2 < n) nodes[id].right = String(2 * i + 2);
+    }
+    
+    const treePointers = {};
+    if (step.pointers) {
+      for (const [pName, idx] of Object.entries(step.pointers)) {
+         if (idx >= 0 && idx < n) {
+           treePointers[pName] = String(idx);
+         }
+      }
+    }
+    
+    return { nodes, rootId: "0", pointers: treePointers };
+  };
 
   const currentStep = history[stepIndex];
   const isQuizActive = currentStep?.isQuizPoint && !currentStep?.quizPassed;
 
-  useEffect(() => {
-    if (isPlaying && !isQuizActive && stepIndex < history.length - 1) {
-      timerRef.current = setTimeout(() => {
-        setStepIndex(prev => prev + 1);
-      }, speed);
-    }
-    return () => clearTimeout(timerRef.current);
-  }, [isPlaying, stepIndex, speed, isQuizActive, history.length]);
-
-  const handleNext = () => { if (stepIndex < history.length - 1 && !isQuizActive) setStepIndex(stepIndex + 1); };
-  const handlePrev = () => {
+  const handleNext = useCallback(() => { 
+    if (stepIndex < history.length - 1 && !isQuizActive) setStepIndex(stepIndex + 1); 
+  }, [stepIndex, history.length, isQuizActive]);
+  
+  const handlePrev = useCallback(() => {
     if (stepIndex > 0) {
       setStepIndex(stepIndex - 1);
       const prevStep = history[stepIndex - 1];
       if (prevStep && prevStep.isQuizPoint) prevStep.quizPassed = false;
     }
-  };
+  }, [stepIndex, history]);
+
+  useEffect(() => {
+    if (isPlaying && !isQuizActive && stepIndex < history.length - 1) {
+      timerRef.current = setTimeout(() => {
+        handleNext();
+      }, speed);
+    }
+    return () => clearTimeout(timerRef.current);
+  }, [isPlaying, stepIndex, speed, isQuizActive, history.length, handleNext]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key === 'ArrowRight') handleNext();
+      else if (e.key === 'ArrowLeft') handlePrev();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleNext, handlePrev]);
+
   const handleQuizPass = () => {
     const newHistory = [...history];
     newHistory[stepIndex].quizPassed = true;
@@ -1598,20 +2417,26 @@ const App = () => {
     categories[v.category].push({ id: k, ...v });
   });
 
-  // Calculate live stats
-  let comparisons = 0;
-  let swaps = 0;
-  for (let i = 0; i <= stepIndex; i++) {
-    const stepText = history[i]?.explanation || "";
-    if (stepText.includes("Vergleich")) comparisons++;
-    if (stepText.includes("Tausche") || stepText.includes("Getauscht") || stepText.includes("Schreibe") || stepText.includes("Setze")) swaps++;
-  }
+  const getStats = () => {
+    let comps = 0;
+    let swps = 0;
+    for (let i = 0; i <= stepIndex; i++) {
+      const s = history[i];
+      if (s) {
+        if (s.explanation?.includes("Vergleiche") || s.explanation?.includes("ist") || s.explanation?.includes("Heapify") || s.explanation?.includes("Prüfe")) comps++;
+        if (s.explanation?.includes("Tausche") || s.explanation?.includes("Kopiert") || s.explanation?.includes("eingefügt")) swps++;
+      }
+    }
+    return { comparisons: comps, swaps: swps };
+  };
+
+  const { comparisons, swaps } = getStats();
 
   return (
     <div className="min-h-screen flex flex-col items-center py-8 px-4 w-full bg-gradient-to-br from-slate-200 to-gray-300 dark:from-slate-900 dark:to-slate-800 font-sans text-slate-800 dark:text-slate-100 transition-colors duration-500">
       <div className="max-w-7xl w-full">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400 drop-shadow-sm">
+          <h1 className="text-4xl font-extrabold text-blue-600 dark:text-blue-400 drop-shadow-sm">
             Algo & Datenstrukturen Visualisierer
           </h1>
           <button 
@@ -1649,15 +2474,40 @@ const App = () => {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 items-end mt-2">
-              <div className="flex-grow">
-                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Eingabewerte (kommagetrennt, max 15):</label>
-                <input 
-                  type="text" 
-                  value={inputValues}
-                  onChange={(e) => setInputValues(e.target.value)}
-                  className="border border-slate-300 dark:border-slate-600 p-3 rounded-xl w-full focus:ring-2 focus:ring-indigo-500 bg-white/90 dark:bg-slate-700 dark:text-white shadow-inner"
-                />
-              </div>
+              {currentAlgoDef.type === "graph" ? (
+                <div className="flex-grow">
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Graphen-Kanten (Format A-B:4, C-D:2):</label>
+                  <input 
+                    type="text" 
+                    value={graphInput}
+                    onChange={(e) => setGraphInput(e.target.value)}
+                    className="border border-slate-300 dark:border-slate-600 p-3 rounded-xl w-full focus:ring-2 focus:ring-indigo-500 bg-white/90 dark:bg-slate-700 dark:text-white shadow-inner"
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="flex-grow">
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Eingabewerte (kommagetrennt, max 15):</label>
+                    <input 
+                      type="text" 
+                      value={inputValues}
+                      onChange={(e) => setInputValues(e.target.value)}
+                      className="border border-slate-300 dark:border-slate-600 p-3 rounded-xl w-full focus:ring-2 focus:ring-indigo-500 bg-white/90 dark:bg-slate-700 dark:text-white shadow-inner"
+                    />
+                  </div>
+                  {(currentAlgoDef.name.includes("Search") || currentAlgoDef.name.includes("Suche")) && (
+                    <div className="w-32">
+                      <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Suchziel:</label>
+                      <input 
+                        type="text" 
+                        value={searchTarget}
+                        onChange={(e) => setSearchTarget(e.target.value)}
+                        className="border border-slate-300 dark:border-slate-600 p-3 rounded-xl w-full focus:ring-2 focus:ring-indigo-500 bg-white/90 dark:bg-slate-700 dark:text-white shadow-inner"
+                      />
+                    </div>
+                  )}
+                </>
+              )}
               <button 
                 onClick={startSimulation}
                 className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg transition-all transform hover:scale-105 whitespace-nowrap"
@@ -1677,8 +2527,28 @@ const App = () => {
           {/* Main Visualizer Area */}
           <div className="flex-grow flex flex-col bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl shadow-2xl overflow-hidden border border-white/60 dark:border-slate-700 min-w-0 relative">
             
-            <div className="bg-slate-900/90 backdrop-blur text-white p-5 min-h-[90px] flex items-center justify-center text-center shadow-inner">
+            <div className="bg-slate-900/90 backdrop-blur text-white p-5 min-h-[90px] flex items-center justify-center text-center shadow-inner relative">
               <p className="text-xl font-mono tracking-wide">{currentStep?.explanation || "Bereit."}</p>
+              
+              {/* Toggles */}
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                {selectedAlgo === "heap" && (
+                  <button 
+                    onClick={() => setHeapType(prev => prev === "max" ? "min" : "max")}
+                    className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors flex items-center gap-2"
+                  >
+                    {heapType === "max" ? "📈 Max-Heap" : "📉 Min-Heap"}
+                  </button>
+                )}
+                {currentAlgoDef.type === "array" && (
+                  <button 
+                    onClick={() => setViewMode(prev => prev === "boxes" ? "bars" : "boxes")}
+                    className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors flex items-center gap-2"
+                  >
+                    {viewMode === "boxes" ? "📊 Balken" : "🔲 Boxen"}
+                  </button>
+                )}
+              </div>
             </div>
             
             {/* Legend & Stats Overlay */}
@@ -1707,21 +2577,38 @@ const App = () => {
 
             <div className="p-4 md:p-8 pt-24 md:pt-28 flex justify-center items-center min-h-[450px] relative bg-slate-50/50 dark:bg-slate-900/30">
               {currentAlgoDef.type === "array" && currentStep && (
-                <ArrayVisualizer 
-                  array={currentStep.array} 
-                  pointers={currentStep.pointers} 
-                  colors={currentStep.colors} 
-                  auxArray={currentStep.auxArray}
-                  auxPointers={currentStep.auxPointers}
-                  auxColors={currentStep.auxColors}
-                  auxLabel={currentStep.auxLabel}
-                />
+                <div className={`flex w-full items-center ${selectedAlgo === 'heap' ? 'flex-col 2xl:flex-row justify-center gap-8' : 'flex-col justify-center'}`}>
+                  <div className={selectedAlgo === 'heap' ? "w-full 2xl:w-1/2 flex justify-center" : "w-full flex justify-center"}>
+                    <ArrayVisualizer 
+                      array={currentStep.array} 
+                      pointers={currentStep.pointers} 
+                      colors={currentStep.colors} 
+                      auxArray={currentStep.auxArray}
+                      auxPointers={currentStep.auxPointers}
+                      auxColors={currentStep.auxColors}
+                      auxLabel={currentStep.auxLabel}
+                      viewMode={viewMode}
+                    />
+                  </div>
+                  {selectedAlgo === "heap" && (
+                    <div className="w-full 2xl:w-1/2 flex flex-col items-center border-t 2xl:border-t-0 2xl:border-l border-slate-300 dark:border-slate-700 pt-8 2xl:pt-0 2xl:pl-8">
+                      <h3 className="text-center font-bold text-slate-500 mb-4 uppercase tracking-widest">Heap-Baum Ansicht</h3>
+                      <TreeVisualizer treeState={generateHeapTreeState(currentStep)} isRBT={false} />
+                    </div>
+                  )}
+                </div>
               )}
               
               {currentAlgoDef.type === "tree" && currentStep && (
                 <TreeVisualizer 
                   treeState={currentStep} 
                   isRBT={selectedAlgo.startsWith("rbt")}
+                />
+              )}
+
+              {currentAlgoDef.type === "graph" && currentStep && (
+                <GraphVisualizer 
+                  graphState={currentStep} 
                 />
               )}
             </div>
